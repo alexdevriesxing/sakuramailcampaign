@@ -25,6 +25,8 @@ The public site and dashboard are dependency-light HTML, CSS and JavaScript. The
 The Worker provides:
 
 - Passwordless authentication.
+- Multiple sender identities scoped to each workspace.
+- Contact filtering, bulk tags and saved segment rule evaluation.
 - Session and role enforcement.
 - Tenant-scoped CRUD.
 - Campaign validation and credit reservation.
@@ -40,8 +42,8 @@ Core tables:
 
 - `users`, `sessions`, `login_codes`
 - `workspaces`, `memberships`
-- `contacts`, `suppressions`
-- `campaigns`, `campaign_attachments`, `send_events`
+- `contacts`, `tags`, `contact_tags`, `segments`, `suppressions`
+- `sender_identities`, `campaigns`, `campaign_attachments`, `send_events`
 - `files`, `billing_orders`, `audit_logs`, `rate_limits`
 
 ### R2
@@ -56,7 +58,7 @@ The database record and every download/delete query also require the signed-in w
 
 ### Queues
 
-A campaign reserves one credit per eligible contact, writes an idempotent queued send event and publishes one queue message per recipient. The consumer:
+A campaign snapshots its selected segment rules, evaluates the matching active and unsuppressed contacts at dispatch time, reserves one credit per eligible contact, writes an idempotent queued send event and publishes one queue message per recipient. The consumer:
 
 1. Reloads the campaign and contact using the workspace ID.
 2. Rechecks the suppression table.

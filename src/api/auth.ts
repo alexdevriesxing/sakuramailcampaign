@@ -85,6 +85,7 @@ export async function handleAuthVerify(request: Request, env: Env): Promise<Resp
   if (!user) {
     const userId = randomId('usr_');
     const workspaceId = randomId('ws_');
+    const senderId = randomId('snd_');
     const workspaceName = email.split('@')[0] ? `${email.split('@')[0]}'s workspace` : 'My workspace';
     const now = nowIso();
     await env.DB.batch([
@@ -94,6 +95,10 @@ export async function handleAuthVerify(request: Request, env: Env): Promise<Resp
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(workspaceId, workspaceName, userId, env.FROM_NAME, env.FROM_EMAIL, email, now, now),
       env.DB.prepare('INSERT INTO memberships (user_id, workspace_id, role, created_at) VALUES (?, ?, ?, ?)').bind(userId, workspaceId, 'owner', now),
+      env.DB.prepare(
+        `INSERT INTO sender_identities (id, workspace_id, label, from_name, email, reply_to, status, is_default, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', 1, ?, ?)`,
+      ).bind(senderId, workspaceId, 'Default sender', env.FROM_NAME, env.FROM_EMAIL, email, now, now),
     ]);
     user = { id: userId };
   } else {
@@ -120,8 +125,9 @@ export async function handleMe(request: Request, env: Env, context: AuthContext)
 }
 
 export async function handleDashboard(env: Env, context: AuthContext): Promise<Response> {
-  const [workspace, activeContacts, suppressedContacts, acceptedSends, scheduledCampaigns, campaigns] = await Promise.all([
-    env.DB.prepare('SELECT credits, business_name, postal_address, default_from_email FROM workspaces WHERE id = ?').bind(context.workspaceId).first<{ credits: number; business_name: string | null; postal_address: string | null; default_from_email: string | null }>(),
+  const [workspace, activeSender, activeContacts, suppressedContacts, acceptedSends, scheduledCampaigns, campaigns] = await Promise.all([
+    env.DB.prepare('SELECT credits, business_name, postal_address FROM workspaces WHERE id = ?').bind(context.workspaceId).first<{ credits: number; business_name: string | null; postal_address: string | null }>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM sender_identities WHERE workspace_id = ? AND status = 'active'").bind(context.workspaceId).first<{ count: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM contacts WHERE workspace_id = ? AND status = 'active'").bind(context.workspaceId).first<{ count: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM contacts WHERE workspace_id = ? AND status != 'active'").bind(context.workspaceId).first<{ count: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM send_events WHERE workspace_id = ? AND status = 'accepted'").bind(context.workspaceId).first<{ count: number }>(),
@@ -134,7 +140,7 @@ export async function handleDashboard(env: Env, context: AuthContext): Promise<R
     suppressedContacts: suppressedContacts?.count ?? 0,
     acceptedSends: acceptedSends?.count ?? 0,
     scheduledCampaigns: scheduledCampaigns?.count ?? 0,
-    settingsComplete: Boolean(workspace?.business_name && workspace.postal_address && workspace.default_from_email),
+    settingsComplete: Boolean(workspace?.business_name && workspace.postal_address && (activeSender?.count ?? 0) > 0),
     recentCampaigns: campaigns.results,
   });
 }
