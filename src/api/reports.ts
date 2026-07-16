@@ -1,6 +1,6 @@
 import type { AuthContext, Env } from '../types';
-import { json } from '../security';
-import { HttpError } from '../http';
+import { decryptEmail, json } from '../security';
+import { HttpError, requireRole } from '../http';
 
 interface SendTotalsRow {
   total: number;
@@ -188,6 +188,92 @@ export async function handleWorkspaceReports(env: Env, context: AuthContext): Pr
       creditsPurchased: Number(billing?.credit_units ?? 0) * 1000,
     },
   });
+}
+
+interface RecipientRow {
+  contact_id: string;
+  delivery_status: string;
+  email_ciphertext: string;
+  email_iv: string;
+  first_name: string | null;
+  last_name: string | null;
+  open_hits: number | null;
+  open_last: string | null;
+  click_hits: number | null;
+  last_click: string | null;
+  links_clicked: number | null;
+}
+
+function csvCell(value: string | number | null): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+/**
+ * Per-recipient open/click detail for one campaign. Decrypts addresses, so it is
+ * restricted to owner/admin and is workspace-scoped. Supports ?format=csv export.
+ */
+export async function handleCampaignRecipients(request: Request, env: Env, context: AuthContext, campaignId: string): Promise<Response> {
+  requireRole(context, ['owner', 'admin']);
+  const campaign = await env.DB.prepare('SELECT name FROM campaigns WHERE id = ? AND workspace_id = ?')
+    .bind(campaignId, context.workspaceId)
+    .first<{ name: string }>();
+  if (!campaign) throw new HttpError(404, 'Campaign not found.');
+
+  const rows = await env.DB.prepare(
+    `SELECT se.contact_id, se.status AS delivery_status,
+        c.email_ciphertext, c.email_iv, c.first_name, c.last_name,
+        o.hits AS open_hits, o.last_at AS open_last,
+        cl.click_hits, cl.last_click, cl.links_clicked
+     FROM send_events se
+     JOIN contacts c ON c.id = se.contact_id AND c.workspace_id = se.workspace_id
+     LEFT JOIN email_opens o ON o.campaign_id = se.campaign_id AND o.contact_id = se.contact_id
+     LEFT JOIN (
+       SELECT campaign_id, contact_id, SUM(hits) AS click_hits, MAX(last_at) AS last_click, COUNT(*) AS links_clicked
+       FROM email_clicks GROUP BY campaign_id, contact_id
+     ) cl ON cl.campaign_id = se.campaign_id AND cl.contact_id = se.contact_id
+     WHERE se.workspace_id = ? AND se.campaign_id = ?
+     ORDER BY (cl.click_hits IS NOT NULL) DESC, (o.hits IS NOT NULL) DESC, c.created_at DESC
+     LIMIT 5000`,
+  )
+    .bind(context.workspaceId, campaignId)
+    .all<RecipientRow>();
+
+  const recipients = await Promise.all(
+    rows.results.map(async (row) => ({
+      email: await decryptEmail(env, row.email_ciphertext, row.email_iv).catch(() => '(unavailable)'),
+      firstName: row.first_name ?? '',
+      lastName: row.last_name ?? '',
+      deliveryStatus: row.delivery_status,
+      opened: (row.open_hits ?? 0) > 0,
+      openCount: Number(row.open_hits ?? 0),
+      lastOpen: row.open_last,
+      clicked: (row.click_hits ?? 0) > 0,
+      clickCount: Number(row.click_hits ?? 0),
+      linksClicked: Number(row.links_clicked ?? 0),
+      lastClick: row.last_click,
+    })),
+  );
+
+  const url = new URL(request.url);
+  if (url.searchParams.get('format') === 'csv') {
+    const header = 'email,first_name,last_name,delivery_status,opened,open_count,last_open,clicked,click_count,last_click';
+    const lines = recipients.map((r) =>
+      [r.email, r.firstName, r.lastName, r.deliveryStatus, r.opened ? 'yes' : 'no', r.openCount, r.lastOpen, r.clicked ? 'yes' : 'no', r.clickCount, r.lastClick]
+        .map(csvCell)
+        .join(','),
+    );
+    const safeName = campaign.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'campaign';
+    return new Response([header, ...lines].join('\r\n'), {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${safeName}-recipients.csv"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  return json({ campaignName: campaign.name, count: recipients.length, recipients });
 }
 
 export async function handlePlatformStats(env: Env, context: AuthContext): Promise<Response> {

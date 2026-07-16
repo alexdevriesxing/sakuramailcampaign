@@ -16,7 +16,9 @@ import { dispatchCampaign, handleCampaignCreate } from './campaigns';
 import { handleBillingCapture, handleBillingCreate, handleFilesUpload, handleSettingsUpdate } from './resources';
 import { handleSenderCreate, handleSenderDelete, handleSendersList, handleSenderUpdate } from './senders';
 import { handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate } from './audience';
-import { handlePlatformStats, handleWorkspaceReports } from './reports';
+import { handleCampaignRecipients, handlePlatformStats, handleWorkspaceReports } from './reports';
+import { handleTemplateCreate, handleTemplateDelete, handleTemplateUpdate, handleTemplatesList } from './templates';
+import { sendTestEmail } from '../email';
 
 export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (!checkOrigin(request, env)) throw new HttpError(403, 'Origin validation failed.');
@@ -35,6 +37,14 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   if (request.method === 'GET' && path === '/api/me') return handleMe(request, env, context);
   if (request.method === 'GET' && path === '/api/dashboard') return handleDashboard(env, context);
   if (request.method === 'GET' && path === '/api/reports') return handleWorkspaceReports(env, context);
+  const recipientsMatch = path.match(/^\/api\/reports\/campaigns\/([^/]+)\/recipients$/);
+  if (recipientsMatch && request.method === 'GET') return handleCampaignRecipients(request, env, context, decodeURIComponent(recipientsMatch[1]!));
+
+  if (path === '/api/templates' && request.method === 'GET') return handleTemplatesList(env, context);
+  if (path === '/api/templates' && request.method === 'POST') return handleTemplateCreate(request, env, context);
+  const templateMatch = path.match(/^\/api\/templates\/([^/]+)$/);
+  if (templateMatch && request.method === 'PATCH') return handleTemplateUpdate(request, env, context, decodeURIComponent(templateMatch[1]!));
+  if (templateMatch && request.method === 'DELETE') return handleTemplateDelete(request, env, context, decodeURIComponent(templateMatch[1]!));
 
   if (path === '/api/contacts' && request.method === 'GET') return handleContactsList(request, env, context);
   if (path === '/api/contacts' && request.method === 'POST') {
@@ -83,6 +93,22 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     return json({ campaigns: campaigns.results });
   }
   if (path === '/api/campaigns' && request.method === 'POST') return handleCampaignCreate(request, env, context);
+  const campaignTestMatch = path.match(/^\/api\/campaigns\/([^/]+)\/test$/);
+  if (campaignTestMatch && request.method === 'POST') {
+    requireRole(context, ['owner', 'admin', 'editor']);
+    const campaignId = decodeURIComponent(campaignTestMatch[1]!);
+    const owns = await env.DB.prepare('SELECT 1 FROM campaigns WHERE id = ? AND workspace_id = ?').bind(campaignId, context.workspaceId).first();
+    if (!owns) throw new HttpError(404, 'Campaign not found.');
+    try {
+      // Always send to the requester's own verified account email — never an
+      // arbitrary address — so the test endpoint cannot be used as a relay.
+      await sendTestEmail(env, campaignId, context.workspaceId, context.email);
+    } catch (error) {
+      throw new HttpError(503, error instanceof Error ? error.message : 'Test send failed.');
+    }
+    await audit(env, request, context, 'campaign.test', 'campaign', campaignId);
+    return json({ ok: true, sentTo: context.email });
+  }
   const campaignSendMatch = path.match(/^\/api\/campaigns\/([^/]+)\/send$/);
   if (campaignSendMatch && request.method === 'POST') {
     requireRole(context, ['owner', 'admin', 'editor']);

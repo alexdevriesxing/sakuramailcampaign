@@ -17,6 +17,13 @@ function personalize(template: string, values: Record<string, string>): string {
   return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, key: string) => values[key] ?? '');
 }
 
+/** Hidden preview text rendered by inboxes after the subject; empty string when unused. */
+function preheaderBlock(preheader: string): string {
+  const text = preheader.trim();
+  if (!text) return '';
+  return `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${escapeHtml(text)}</div>`;
+}
+
 function stripTags(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -108,7 +115,7 @@ export async function deliverJob(env: Env, job: SendJob): Promise<void> {
   const trackBase = { workspaceId: job.workspaceId, campaignId: job.campaignId, contactId: job.contactId };
   if (campaign.track_clicks) renderedHtml = await rewriteLinksForTracking(env, renderedHtml, trackBase);
   if (campaign.track_opens) renderedHtml += trackingPixel(env, await createTrackingToken(env, trackBase));
-  const html = `${renderedHtml}${footer}`;
+  const html = `${preheaderBlock(personalize(campaign.preheader ?? '', values))}${renderedHtml}${footer}`;
   const textBase = personalize(campaign.text_body || stripTags(campaign.html_body), {
     email,
     first_name: contact.first_name ?? '',
@@ -186,6 +193,39 @@ export async function deliverJob(env: Env, job: SendJob): Promise<void> {
       .run();
     throw error;
   }
+}
+
+/**
+ * Render and send a one-off test copy of a campaign to a single address (the
+ * requesting user's own email). Tracking, unsubscribe tokens, credit reservation
+ * and send_events are intentionally skipped — this is a preview, not a delivery.
+ */
+export async function sendTestEmail(env: Env, campaignId: string, workspaceId: string, toEmail: string): Promise<void> {
+  const campaign = await env.DB.prepare('SELECT * FROM campaigns WHERE id = ? AND workspace_id = ?')
+    .bind(campaignId, workspaceId)
+    .first<CampaignRow>();
+  if (!campaign) throw new Error('Campaign not found.');
+  const workspace = await env.DB.prepare('SELECT business_name, postal_address FROM workspaces WHERE id = ?')
+    .bind(workspaceId)
+    .first<{ business_name: string | null; postal_address: string | null }>();
+  const mergeValues = { email: toEmail, first_name: 'there', last_name: '' };
+  const htmlValues = { email: escapeHtml(toEmail), first_name: 'there', last_name: '' };
+  const footer = `
+    <div style="margin-top:32px;padding-top:18px;border-top:1px solid #eadde3;color:#725d67;font:12px/1.5 Arial,sans-serif">
+      Sent by ${escapeHtml(workspace?.business_name ?? 'Your business')} · ${escapeHtml(workspace?.postal_address ?? '')}<br>
+      <span style="color:#c0392b">This is a test send. Unsubscribe links and tracking are disabled in tests.</span>
+    </div>`;
+  const html = `${preheaderBlock(personalize(campaign.preheader ?? '', htmlValues))}${personalize(campaign.html_body, htmlValues)}${footer}`;
+  const text = `${personalize(campaign.text_body || stripTags(campaign.html_body), mergeValues)}\n\n[Test send]`;
+  await env.EMAIL.send({
+    to: toEmail,
+    from: { email: campaign.from_email, name: campaign.from_name },
+    replyTo: campaign.reply_to ?? undefined,
+    subject: `[TEST] ${personalize(campaign.subject, mergeValues)}`,
+    html,
+    text,
+    headers: { 'X-Sakura-Campaign': campaign.id, 'X-Sakura-Test': '1' },
+  });
 }
 
 export async function finalizeCampaignIfComplete(env: Env, campaignId: string): Promise<void> {

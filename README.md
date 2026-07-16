@@ -9,7 +9,7 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 - A polished marketing site with transparent `$1 / 1,000 email attempts` pricing.
 - Passwordless accounts protected by Cloudflare Turnstile.
 - Tenant-scoped workspaces with encrypted recipient addresses.
-- HTML and plain-text campaign composer with merge fields.
+- HTML and plain-text campaign composer with merge fields, preheader/preview text, reusable saved templates, a device (desktop/mobile) preview, and one-click test sends to your own address.
 - CSV import, manual contact entry, consent records and deduplication.
 - Contact tags, filtering, bulk tag assignment, sorting and reusable audience segments.
 - Multiple sender identities with per-campaign display-name and reply-to overrides.
@@ -19,6 +19,7 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 - Hard-bounce detection that flags and suppresses dead addresses, so bounced and unsubscribed contacts are automatically excluded from future campaigns.
 - Optional, per-campaign open and click tracking (off by default): a signed open pixel and signed link-redirects, disclosed in the message footer, with an open-redirect-safe design.
 - A reports & analytics view with deliverability KPIs, engagement metrics (open/click/click-to-open rates, top links), a 30-day send trend chart, per-campaign performance, failure-reason and audience-health breakdowns, and spend — all rendered with dependency-free inline SVG (no third-party scripts, CSP-safe).
+- Per-recipient engagement drill-down (which address opened/clicked, with counts and CSV export), restricted to owner/admin roles.
 - PayPal Orders v2 checkout with server-side price calculation and capture validation.
 - A platform-admin dashboard that exposes aggregate operations, not recipient addresses or message content.
 - Privacy, security, terms, DPA and deployment documentation.

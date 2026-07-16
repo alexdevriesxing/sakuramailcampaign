@@ -21,11 +21,13 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
     audienceRules?: unknown;
     trackOpens?: boolean;
     trackClicks?: boolean;
+    preheader?: string;
   }>(request);
   const trackOpens = body.trackOpens === true ? 1 : 0;
   const trackClicks = body.trackClicks === true ? 1 : 0;
   const name = String(body.name ?? '').trim().slice(0, 120);
   const subject = String(body.subject ?? '').trim().slice(0, 998);
+  const preheader = String(body.preheader ?? '').trim().slice(0, 255);
   const htmlBody = String(body.htmlBody ?? '').trim();
   const textBody = String(body.textBody ?? '').trim();
   if (!name || !subject || !htmlBody) throw new HttpError(400, 'Complete the campaign name, subject and HTML message.');
@@ -91,9 +93,9 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       `INSERT INTO campaigns (
-        id, workspace_id, name, subject, from_name, from_email, reply_to, html_body, text_body, status, scheduled_at,
+        id, workspace_id, name, subject, from_name, from_email, reply_to, html_body, text_body, preheader, status, scheduled_at,
         sender_identity_id, segment_id, audience_filter_json, track_opens, track_clicks, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       context.workspaceId,
@@ -104,6 +106,7 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
       replyTo,
       htmlBody,
       textBody,
+      preheader,
       status,
       scheduledAt,
       sender.id,

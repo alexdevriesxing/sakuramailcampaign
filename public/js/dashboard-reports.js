@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, formatNumber } from './shared.js';
+import { $, $$, api, escapeHtml, formatDate, formatNumber } from './shared.js';
 import { statusPill } from './dashboard-context.js';
 
 export const COLORS = {
@@ -120,9 +120,40 @@ function campaignPerformance(rows = []) {
       const color = rate == null ? COLORS.muted : rate >= 0.95 ? COLORS.accepted : rate >= 0.8 ? COLORS.amber : COLORS.failed;
       const opens = Number(c.unique_openers) || 0;
       const clicks = Number(c.unique_clickers) || 0;
-      return `<tr><td><b>${escapeHtml(c.name)}</b><br><small>${escapeHtml(c.subject)}</small></td><td>${statusPill(c.status)}</td><td>${formatNumber(c.recipient_count)}</td><td>${formatNumber(delivered)}</td><td>${opens ? formatNumber(opens) : '—'}</td><td>${clicks ? formatNumber(clicks) : '—'}</td><td>${formatNumber(failed)}</td><td><div class="rate-cell"><div class="rate-bar"><span style="width:${pct}%;background:${color}"></span></div>${ratePill(rate)}</div></td></tr>`;
+      return `<tr><td><b>${escapeHtml(c.name)}</b><br><small>${escapeHtml(c.subject)}</small><br><button class="button text mini" data-recipients="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}">View recipients →</button></td><td>${statusPill(c.status)}</td><td>${formatNumber(c.recipient_count)}</td><td>${formatNumber(delivered)}</td><td>${opens ? formatNumber(opens) : '—'}</td><td>${clicks ? formatNumber(clicks) : '—'}</td><td>${formatNumber(failed)}</td><td><div class="rate-cell"><div class="rate-bar"><span style="width:${pct}%;background:${color}"></span></div>${ratePill(rate)}</div></td></tr>`;
     })
     .join('')}</tbody></table></div>`;
+}
+
+function recipientsDialog() {
+  let dialog = document.getElementById('recipients-dialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'recipients-dialog';
+    dialog.className = 'modal';
+    document.body.appendChild(dialog);
+  }
+  return dialog;
+}
+
+async function openRecipients(campaignId, name) {
+  const dialog = recipientsDialog();
+  dialog.innerHTML = `<div class="modal-head"><div><div class="eyebrow">Recipient activity</div><h2>${escapeHtml(name)}</h2></div><button class="icon-button" id="recipients-close" aria-label="Close">×</button></div><div id="recipients-body"><div class="loading-card">Loading recipient activity…</div></div>`;
+  dialog.querySelector('#recipients-close').onclick = () => dialog.close();
+  dialog.showModal();
+  try {
+    const data = await api(`/api/reports/campaigns/${encodeURIComponent(campaignId)}/recipients`);
+    const body = dialog.querySelector('#recipients-body');
+    if (!data.recipients.length) {
+      body.innerHTML = '<div class="empty-card small">No recipients recorded for this campaign yet.</div>';
+      return;
+    }
+    body.innerHTML = `<div class="toolbar"><span>${formatNumber(data.count)} recipients</span><a class="button ghost" href="/api/reports/campaigns/${encodeURIComponent(campaignId)}/recipients?format=csv" download>Export CSV</a></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Email</th><th>Name</th><th>Delivery</th><th>Opened</th><th>Clicked</th><th>Last activity</th></tr></thead><tbody>${data.recipients
+      .map((r) => `<tr><td>${escapeHtml(r.email)}</td><td>${escapeHtml(`${r.firstName} ${r.lastName}`.trim()) || '—'}</td><td>${statusPill(r.deliveryStatus)}</td><td>${r.opened ? `✓ ${formatNumber(r.openCount)}` : '—'}</td><td>${r.clicked ? `✓ ${formatNumber(r.clickCount)}` : '—'}</td><td>${formatDate(r.lastClick || r.lastOpen)}</td></tr>`)
+      .join('')}</tbody></table></div>`;
+  } catch (error) {
+    dialog.querySelector('#recipients-body').innerHTML = `<div class="empty-card small">${escapeHtml(error.message)}</div>`;
+  }
 }
 
 function topLinksPanel(rows = []) {
@@ -161,4 +192,5 @@ export async function renderReports() {
       <section class="panel"><div class="panel-head"><h2>Suppressions</h2></div>${breakdownList(data.suppressions, REASON_PALETTE)}</section>
     </div>
     <section class="panel" style="margin-top:18px"><div class="panel-head"><h2>Spend &amp; credits</h2></div><div class="report-billing-grid"><div><span>Total spent</span><strong>$${Number(data.billing.spentUsd).toFixed(2)}</strong></div><div><span>Completed orders</span><strong>${formatNumber(data.billing.orders)}</strong></div><div><span>Credits purchased</span><strong>${formatNumber(data.billing.creditsPurchased)}</strong></div></div></section>`;
+  $$('[data-recipients]').forEach((button) => button.addEventListener('click', () => openRecipients(button.dataset.recipients, button.dataset.name)));
 }

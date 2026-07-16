@@ -66,6 +66,7 @@ export interface CampaignRow {
   reply_to: string | null;
   html_body: string;
   text_body: string;
+  preheader: string;
   status: string;
   scheduled_at: string | null;
   recipient_count: number;
