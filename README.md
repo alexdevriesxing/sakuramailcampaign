@@ -2,7 +2,7 @@
 
 A production-oriented SaaS starter for affordable email campaigns under the Sakura Software Solutions brand.
 
-![Sakura Mail logo](public/logo.png)
+![Sakura Mail logo](public/logo.svg)
 
 ## What is included
 
