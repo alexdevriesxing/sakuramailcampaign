@@ -1,0 +1,74 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sakura-mail-campaign",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-15",
+  "workers_dev": true,
+  "minify": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "APP_NAME": "Sakura Mail",
+    "APP_URL": "https://mail.sakurasoftwaresolutions.com",
+    "FROM_EMAIL": "hello@mail.sakurasoftwaresolutions.com",
+    "FROM_NAME": "Sakura Mail",
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    "PAYPAL_CLIENT_ID": "REPLACE_WITH_PAYPAL_CLIENT_ID",
+    "PAYPAL_MODE": "sandbox",
+    "PAYPAL_RECEIVER_EMAIL": "alexdevriesxing@gmail.com",
+    "ADMIN_EMAILS": "alexdevriesxing@gmail.com",
+    "PRICE_PER_1000_USD": "1.00",
+    "MIN_PURCHASE_THOUSANDS": "5"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sakura-mail-db",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "sakura-mail-files"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "EMAIL_QUEUE",
+        "queue": "sakura-mail-send"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "sakura-mail-send",
+        "max_batch_size": 20,
+        "max_batch_timeout": 10,
+        "max_retries": 5,
+        "dead_letter_queue": "sakura-mail-dead-letter"
+      }
+    ]
+  },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "remote": true,
+      "allowed_sender_addresses": [
+        "hello@mail.sakurasoftwaresolutions.com",
+        "campaigns@mail.sakurasoftwaresolutions.com"
+      ]
+    }
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
