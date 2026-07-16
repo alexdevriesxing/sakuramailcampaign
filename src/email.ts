@@ -24,14 +24,14 @@ async function attachmentsForCampaign(env: Env, campaignId: string, workspaceId:
     .bind(campaignId, workspaceId)
     .all<{ r2_key: string; filename: string; content_type: string; size_bytes: number }>();
 
-  const attachments: Array<{ filename: string; contentType: string; content: ArrayBuffer }> = [];
+  const attachments: Array<{ filename: string; type: string; disposition: 'attachment'; content: ArrayBuffer }> = [];
   let total = 0;
   for (const row of rows.results) {
     total += row.size_bytes;
     if (total > 5 * 1024 * 1024) throw new Error('Attachments exceed Cloudflare Email Service 5 MiB message limit.');
     const object = await env.FILES.get(row.r2_key);
     if (!object) throw new Error(`Attachment ${row.filename} was not found.`);
-    attachments.push({ filename: row.filename, contentType: row.content_type, content: await object.arrayBuffer() });
+    attachments.push({ filename: row.filename, type: row.content_type, disposition: 'attachment', content: await object.arrayBuffer() });
   }
   return attachments;
 }
