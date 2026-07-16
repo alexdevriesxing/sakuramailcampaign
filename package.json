@@ -1,0 +1,23 @@
+{
+  "name": "sakura-mail-campaign",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Privacy-first email campaign SaaS on Cloudflare Workers, D1, R2, Queues and Email Service.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck",
+    "db:migrate:local": "wrangler d1 migrations apply sakura-mail-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply sakura-mail-db --remote"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.8.3",
+    "wrangler": "latest"
+  }
+}
