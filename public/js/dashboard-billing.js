@@ -1,5 +1,6 @@
 import { $, $$, api, config, escapeHtml, formatDate, formatNumber } from './shared.js';
 import { alertApp, statusPill } from './dashboard-context.js';
+import { chartLegend, sendsChart } from './dashboard-reports.js';
 
 export async function renderBilling() {
   const data = await api('/api/billing');
@@ -39,5 +40,14 @@ export async function renderSettings() {
 
 export async function renderAdmin() {
   const data = await api('/api/admin/stats');
-  $('#view-root').innerHTML = `<div class="stats-grid"><article class="stat-card"><span>Users</span><strong>${formatNumber(data.users)}</strong></article><article class="stat-card"><span>Workspaces</span><strong>${formatNumber(data.workspaces)}</strong></article><article class="stat-card"><span>Accepted sends</span><strong>${formatNumber(data.acceptedSends)}</strong></article><article class="stat-card"><span>Completed revenue</span><strong>$${Number(data.revenueUsd).toFixed(2)}</strong></article></div><section class="panel" style="margin-top:18px"><h2>Privacy boundary</h2><p>This platform-admin endpoint intentionally returns aggregate operations only. It does not return contact addresses, names, uploaded list data, campaign bodies or attachments.</p></section>`;
+  const deliveryRate = data.deliveryRate == null ? '—' : `${Math.round(data.deliveryRate * 100)}%`;
+  const hasSends = Number(data.acceptedSends) + Number(data.failedSends) > 0;
+  $('#view-root').innerHTML = `<div class="stats-grid">
+      <article class="stat-card"><span>Users</span><strong>${formatNumber(data.users)}</strong><small>${formatNumber(data.workspaces)} workspaces</small></article>
+      <article class="stat-card"><span>Campaigns</span><strong>${formatNumber(data.campaigns)}</strong><small>${formatNumber(data.suppressions)} suppressions</small></article>
+      <article class="stat-card"><span>Delivery rate</span><strong>${deliveryRate}</strong><small>${formatNumber(data.acceptedSends)} delivered · ${formatNumber(data.failedSends)} failed</small></article>
+      <article class="stat-card"><span>Completed revenue</span><strong>$${Number(data.revenueUsd).toFixed(2)}</strong><small>${formatNumber(data.revenueOrders)} orders</small></article>
+    </div>
+    <section class="panel report-chart" style="margin-top:18px"><div class="panel-head"><h2>Platform sends · last ${data.windowDays} days</h2>${chartLegend()}</div>${hasSends ? sendsChart(data.series) : '<div class="empty-card small">No platform sends recorded in this window yet.</div>'}</section>
+    <section class="panel" style="margin-top:18px"><h2>Privacy boundary</h2><p>This platform-admin view intentionally returns aggregate operations only. It does not expose contact addresses, names, uploaded list data, campaign bodies or attachments.</p></section>`;
 }

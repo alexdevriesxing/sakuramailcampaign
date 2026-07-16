@@ -125,20 +125,30 @@ export async function handleMe(request: Request, env: Env, context: AuthContext)
 }
 
 export async function handleDashboard(env: Env, context: AuthContext): Promise<Response> {
-  const [workspace, activeSender, activeContacts, suppressedContacts, acceptedSends, scheduledCampaigns, campaigns] = await Promise.all([
+  const [workspace, activeSender, activeContacts, suppressedContacts, sendTotals, scheduledCampaigns, campaigns] = await Promise.all([
     env.DB.prepare('SELECT credits, business_name, postal_address FROM workspaces WHERE id = ?').bind(context.workspaceId).first<{ credits: number; business_name: string | null; postal_address: string | null }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM sender_identities WHERE workspace_id = ? AND status = 'active'").bind(context.workspaceId).first<{ count: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM contacts WHERE workspace_id = ? AND status = 'active'").bind(context.workspaceId).first<{ count: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM contacts WHERE workspace_id = ? AND status != 'active'").bind(context.workspaceId).first<{ count: number }>(),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM send_events WHERE workspace_id = ? AND status = 'accepted'").bind(context.workspaceId).first<{ count: number }>(),
+    env.DB.prepare(
+      `SELECT
+        COALESCE(SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END), 0) AS accepted,
+        COALESCE(SUM(CASE WHEN status IN ('failed', 'bounced', 'complained') THEN 1 ELSE 0 END), 0) AS failed
+       FROM send_events WHERE workspace_id = ?`,
+    ).bind(context.workspaceId).first<{ accepted: number; failed: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS count FROM campaigns WHERE workspace_id = ? AND status = 'scheduled'").bind(context.workspaceId).first<{ count: number }>(),
     env.DB.prepare('SELECT id, name, subject, status, recipient_count, scheduled_at, sent_at FROM campaigns WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 8').bind(context.workspaceId).all(),
   ]);
+  const acceptedSends = Number(sendTotals?.accepted ?? 0);
+  const failedSends = Number(sendTotals?.failed ?? 0);
+  const attempted = acceptedSends + failedSends;
   return json({
     credits: workspace?.credits ?? 0,
     activeContacts: activeContacts?.count ?? 0,
     suppressedContacts: suppressedContacts?.count ?? 0,
-    acceptedSends: acceptedSends?.count ?? 0,
+    acceptedSends,
+    failedSends,
+    deliveryRate: attempted > 0 ? acceptedSends / attempted : null,
     scheduledCampaigns: scheduledCampaigns?.count ?? 0,
     settingsComplete: Boolean(workspace?.business_name && workspace.postal_address && (activeSender?.count ?? 0) > 0),
     recentCampaigns: campaigns.results,

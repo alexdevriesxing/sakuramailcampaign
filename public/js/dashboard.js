@@ -3,6 +3,7 @@ import { appState } from './dashboard-context.js';
 import { openCampaignDialog, renderCampaigns, renderOverview, saveCampaign } from './dashboard-campaigns.js';
 import { renderContacts, renderFiles, renderSegments, saveContact } from './dashboard-audience.js';
 import { renderAdmin, renderBilling, renderSettings } from './dashboard-billing.js';
+import { renderReports } from './dashboard-reports.js';
 
 export async function initApp() {
   const root = $('#view-root');
@@ -31,13 +32,13 @@ async function switchView(view) {
   $$('.sidebar [data-view]').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   $('.sidebar')?.classList.remove('open');
   const titles = {
-    overview: ['Overview', 'Your campaign workspace at a glance.'], campaigns: ['Campaigns', 'Compose, schedule and monitor mailings.'], contacts: ['Contacts', 'Encrypted recipients, tags and consent records.'], segments: ['Segments', 'Saved audiences built from tags, consent, dates and sorting.'], files: ['Files', 'Attachments stored in Cloudflare R2.'], billing: ['Billing', 'Prepaid credits with transparent pricing.'], settings: ['Settings', 'Sender identity and compliance details.'], admin: ['Platform admin', 'Operational totals without recipient-list access.'],
+    overview: ['Overview', 'Your campaign workspace at a glance.'], campaigns: ['Campaigns', 'Compose, schedule and monitor mailings.'], reports: ['Reports & analytics', 'Deliverability, engagement and audience health.'], contacts: ['Contacts', 'Encrypted recipients, tags and consent records.'], segments: ['Segments', 'Saved audiences built from tags, consent, dates and sorting.'], files: ['Files', 'Attachments stored in Cloudflare R2.'], billing: ['Billing', 'Prepaid credits with transparent pricing.'], settings: ['Settings', 'Sender identity and compliance details.'], admin: ['Platform admin', 'Operational totals without recipient-list access.'],
   };
   $('#view-title').textContent = titles[view]?.[0] || view;
   $('#view-subtitle').textContent = titles[view]?.[1] || '';
   $('#view-root').innerHTML = '<div class="loading-card">Loading…</div>';
   try {
-    const renderers = { overview: renderOverview, campaigns: renderCampaigns, contacts: renderContacts, segments: renderSegments, files: renderFiles, billing: renderBilling, settings: renderSettings, admin: renderAdmin };
+    const renderers = { overview: renderOverview, campaigns: renderCampaigns, reports: renderReports, contacts: renderContacts, segments: renderSegments, files: renderFiles, billing: renderBilling, settings: renderSettings, admin: renderAdmin };
     const renderer = renderers[view];
     if (!renderer) throw new Error('Unknown view.');
     await renderer();

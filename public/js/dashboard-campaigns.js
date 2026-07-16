@@ -6,9 +6,9 @@ export async function renderOverview() {
   $('#view-root').innerHTML = `<div class="stats-grid">
     <article class="stat-card"><span>Available credits</span><strong>${formatNumber(data.credits)}</strong><small>email attempts</small></article>
     <article class="stat-card"><span>Active contacts</span><strong>${formatNumber(data.activeContacts)}</strong><small>${formatNumber(data.suppressedContacts)} suppressed</small></article>
-    <article class="stat-card"><span>Accepted sends</span><strong>${formatNumber(data.acceptedSends)}</strong><small>all time</small></article>
+    <article class="stat-card"><span>Delivered sends</span><strong>${formatNumber(data.acceptedSends)}</strong><small>${data.deliveryRate == null ? 'all time' : `${Math.round(data.deliveryRate * 100)}% delivery rate`}</small></article>
     <article class="stat-card"><span>Scheduled</span><strong>${formatNumber(data.scheduledCampaigns)}</strong><small>campaigns waiting</small></article>
-  </div><div class="panel-grid"><section class="panel"><div class="panel-head"><h2>Recent campaigns</h2><button class="button text" data-go="campaigns">View all</button></div>${campaignTable(data.recentCampaigns)}</section>
+  </div><div class="panel-grid"><section class="panel"><div class="panel-head"><h2>Recent campaigns</h2><div class="panel-head-actions"><button class="button text" data-go="reports">Reports</button><button class="button text" data-go="campaigns">View all</button></div></div>${campaignTable(data.recentCampaigns)}</section>
   <section class="panel"><div class="panel-head"><h2>Compliance readiness</h2></div><p>${data.settingsComplete ? '✓ Business identity, postal address and an active sender are ready.' : 'Add your business identity, postal address and at least one active sender before sending.'}</p><button class="button ghost" data-go="settings">Review settings</button></section></div>`;
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => document.dispatchEvent(new CustomEvent('sakura:view', { detail: button.dataset.go }))));
 }

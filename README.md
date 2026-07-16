@@ -16,6 +16,7 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 - R2 attachment storage with type and 5 MiB size enforcement.
 - Send-now and scheduled campaigns using Cloudflare Queues and Cron Triggers.
 - Automatic suppression checks and signed one-click unsubscribe links.
+- A reports & analytics view with deliverability KPIs, a 30-day send trend chart, per-campaign delivery rates, failure-reason and audience-health breakdowns, and spend — all rendered with dependency-free inline SVG (no third-party scripts, CSP-safe).
 - PayPal Orders v2 checkout with server-side price calculation and capture validation.
 - A platform-admin dashboard that exposes aggregate operations, not recipient addresses or message content.
 - Privacy, security, terms, DPA and deployment documentation.

@@ -16,6 +16,7 @@ import { dispatchCampaign, handleCampaignCreate } from './campaigns';
 import { handleBillingCapture, handleBillingCreate, handleFilesUpload, handleSettingsUpdate } from './resources';
 import { handleSenderCreate, handleSenderDelete, handleSendersList, handleSenderUpdate } from './senders';
 import { handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate } from './audience';
+import { handlePlatformStats, handleWorkspaceReports } from './reports';
 
 export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (!checkOrigin(request, env)) throw new HttpError(403, 'Origin validation failed.');
@@ -33,6 +34,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   }
   if (request.method === 'GET' && path === '/api/me') return handleMe(request, env, context);
   if (request.method === 'GET' && path === '/api/dashboard') return handleDashboard(env, context);
+  if (request.method === 'GET' && path === '/api/reports') return handleWorkspaceReports(env, context);
 
   if (path === '/api/contacts' && request.method === 'GET') return handleContactsList(request, env, context);
   if (path === '/api/contacts' && request.method === 'POST') {
@@ -152,16 +154,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   }
   if (path === '/api/settings' && request.method === 'PATCH') return handleSettingsUpdate(request, env, context);
 
-  if (path === '/api/admin/stats' && request.method === 'GET') {
-    if (!context.isPlatformAdmin) throw new HttpError(403, 'Platform administrator access required.');
-    const [users, workspaces, accepted, revenue] = await Promise.all([
-      env.DB.prepare('SELECT COUNT(*) AS count FROM users').first<{ count: number }>(),
-      env.DB.prepare('SELECT COUNT(*) AS count FROM workspaces').first<{ count: number }>(),
-      env.DB.prepare("SELECT COUNT(*) AS count FROM send_events WHERE status = 'accepted'").first<{ count: number }>(),
-      env.DB.prepare("SELECT COALESCE(SUM(CAST(amount_usd AS REAL)), 0) AS total FROM billing_orders WHERE status = 'completed'").first<{ total: number }>(),
-    ]);
-    return json({ users: users?.count ?? 0, workspaces: workspaces?.count ?? 0, acceptedSends: accepted?.count ?? 0, revenueUsd: revenue?.total ?? 0 });
-  }
+  if (path === '/api/admin/stats' && request.method === 'GET') return handlePlatformStats(env, context);
 
   throw new HttpError(404, 'API route not found.');
 }
