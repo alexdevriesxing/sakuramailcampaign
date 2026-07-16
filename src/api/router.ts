@@ -3,9 +3,19 @@ import { audit } from '../db';
 import { checkOrigin, clearSessionCookie, json } from '../security';
 import { HttpError, readJson, requireAuth, requireRole, sanitizeFilename } from '../http';
 import { handleAuthStart, handleAuthVerify, handleDashboard, handleMe } from './auth';
-import { handleContactsList, importContacts, type ContactInput } from './contacts';
+import {
+  handleContactsList,
+  handleContactTagsBulk,
+  handleTagCreate,
+  handleTagDelete,
+  handleTagsList,
+  importContacts,
+  type ContactInput,
+} from './contacts';
 import { dispatchCampaign, handleCampaignCreate } from './campaigns';
 import { handleBillingCapture, handleBillingCreate, handleFilesUpload, handleSettingsUpdate } from './resources';
+import { handleSenderCreate, handleSenderDelete, handleSendersList, handleSenderUpdate } from './senders';
+import { handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate } from './audience';
 
 export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (!checkOrigin(request, env)) throw new HttpError(403, 'Origin validation failed.');
@@ -24,7 +34,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   if (request.method === 'GET' && path === '/api/me') return handleMe(request, env, context);
   if (request.method === 'GET' && path === '/api/dashboard') return handleDashboard(env, context);
 
-  if (path === '/api/contacts' && request.method === 'GET') return handleContactsList(env, context);
+  if (path === '/api/contacts' && request.method === 'GET') return handleContactsList(request, env, context);
   if (path === '/api/contacts' && request.method === 'POST') {
     const input = await readJson<ContactInput>(request);
     const result = await importContacts(env, context, [input]);
@@ -38,10 +48,33 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     await audit(env, request, context, 'contact.import', undefined, undefined, result);
     return json(result);
   }
+  if (path === '/api/contacts/tags' && request.method === 'PATCH') return handleContactTagsBulk(request, env, context);
+
+  if (path === '/api/tags' && request.method === 'GET') return handleTagsList(env, context);
+  if (path === '/api/tags' && request.method === 'POST') return handleTagCreate(request, env, context);
+  const tagMatch = path.match(/^\/api\/tags\/([^/]+)$/);
+  if (tagMatch && request.method === 'DELETE') return handleTagDelete(request, env, context, decodeURIComponent(tagMatch[1]!));
+
+  if (path === '/api/segments' && request.method === 'GET') return handleSegmentsList(env, context);
+  if (path === '/api/segments' && request.method === 'POST') return handleSegmentCreate(request, env, context);
+  const segmentMatch = path.match(/^\/api\/segments\/([^/]+)$/);
+  if (segmentMatch && request.method === 'PATCH') return handleSegmentUpdate(request, env, context, decodeURIComponent(segmentMatch[1]!));
+  if (segmentMatch && request.method === 'DELETE') return handleSegmentDelete(request, env, context, decodeURIComponent(segmentMatch[1]!));
+
+  if (path === '/api/senders' && request.method === 'GET') return handleSendersList(env, context);
+  if (path === '/api/senders' && request.method === 'POST') return handleSenderCreate(request, env, context);
+  const senderMatch = path.match(/^\/api\/senders\/([^/]+)$/);
+  if (senderMatch && request.method === 'PATCH') return handleSenderUpdate(request, env, context, decodeURIComponent(senderMatch[1]!));
+  if (senderMatch && request.method === 'DELETE') return handleSenderDelete(request, env, context, decodeURIComponent(senderMatch[1]!));
 
   if (path === '/api/campaigns' && request.method === 'GET') {
     const campaigns = await env.DB.prepare(
-      'SELECT id, name, subject, status, recipient_count, sent_count, failed_count, scheduled_at, sent_at, created_at FROM campaigns WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 250',
+      `SELECT c.id, c.name, c.subject, c.status, c.recipient_count, c.sent_count, c.failed_count, c.scheduled_at, c.sent_at, c.created_at,
+        c.from_name, c.from_email, si.label AS sender_label, s.name AS segment_name
+       FROM campaigns c
+       LEFT JOIN sender_identities si ON si.id = c.sender_identity_id AND si.workspace_id = c.workspace_id
+       LEFT JOIN segments s ON s.id = c.segment_id AND s.workspace_id = c.workspace_id
+       WHERE c.workspace_id = ? ORDER BY c.created_at DESC LIMIT 250`,
     )
       .bind(context.workspaceId)
       .all();

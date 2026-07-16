@@ -2,6 +2,7 @@
 
 ## Required before public launch
 
+- Confirm the selected delivery provider expressly permits the intended marketing/bulk traffic.
 - Domain verification and SPF/DKIM health checks.
 - New-account sending limits and manual abuse review.
 - Bounce and complaint ingestion with automatic suppression.
@@ -24,14 +25,15 @@
 
 ### Better audience tools
 
-- Saved segments and tags.
+- Nested segment groups with AND/OR logic.
 - Custom fields and richer merge variables.
+- Segment editing, duplication and campaign audience previews over time.
 - Consent-expiry rules by jurisdiction.
 - Duplicate and risky-address reports.
 
 ### Deliverability
 
-- Per-customer sending-domain onboarding.
+- Per-customer sending-domain onboarding and sender verification status.
 - DNS status dashboard.
 - Bounce categories and complaint rates.
 - Automatic warm-up and throttling.

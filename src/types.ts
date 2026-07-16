@@ -71,6 +71,9 @@ export interface CampaignRow {
   recipient_count: number;
   sent_count: number;
   failed_count: number;
+  sender_identity_id: string | null;
+  segment_id: string | null;
+  audience_filter_json: string;
 }
 
 export interface ContactRow {

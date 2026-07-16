@@ -57,11 +57,7 @@
   "send_email": [
     {
       "name": "EMAIL",
-      "remote": true,
-      "allowed_sender_addresses": [
-        "hello@mail.sakurasoftwaresolutions.com",
-        "campaigns@mail.sakurasoftwaresolutions.com"
-      ]
+      "remote": true
     }
   ],
   "triggers": {

@@ -11,6 +11,8 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 - Tenant-scoped workspaces with encrypted recipient addresses.
 - HTML and plain-text campaign composer with merge fields.
 - CSV import, manual contact entry, consent records and deduplication.
+- Contact tags, filtering, bulk tag assignment, sorting and reusable audience segments.
+- Multiple sender identities with per-campaign display-name and reply-to overrides.
 - R2 attachment storage with type and 5 MiB size enforcement.
 - Send-now and scheduled campaigns using Cloudflare Queues and Cron Triggers.
 - Automatic suppression checks and signed one-click unsubscribe links.
@@ -20,9 +22,11 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 
 ## Important product decisions
 
-### The Cloudflare email stack is now suitable for this design
+### Cloudflare delivery is technically supported, but marketing use requires confirmation
 
-Cloudflare Email Service currently supports arbitrary outbound recipients on Workers Paid accounts after a sending domain is onboarded. Current published pricing is 3,000 outbound emails included per month and then `$0.35 per 1,000`. Cloudflare also documents a 5 MiB total message limit, up to 50 combined recipients per API submission and account-specific sending quotas.
+Cloudflare Email Service supports arbitrary outbound recipients on Workers Paid accounts after a sending domain is onboarded. Current published pricing is 3,000 outbound emails included per month and then `$0.35 per 1,000`. Cloudflare also documents a 5 MiB total message limit, up to 50 combined recipients per API submission and account-specific sending quotas.
+
+However, Cloudflare's current Email Service FAQ states that the service is intended only for transactional email and that marketing/bulk-sender tooling is planned for the future. Do not launch Sakura Mail for promotional campaigns on this provider without written confirmation from Cloudflare that the intended traffic is permitted. Otherwise, keep the Worker/D1/R2/Queue application and replace the final delivery adapter with a provider that expressly permits marketing email.
 
 This app deliberately sends one recipient per queued job. That protects recipient privacy, gives every message its own unsubscribe header and avoids exposing a mailing list through To/CC fields.
 
@@ -30,7 +34,8 @@ Official references:
 
 - https://developers.cloudflare.com/email-service/platform/pricing/
 - https://developers.cloudflare.com/email-service/platform/limits/
-- https://developers.cloudflare.com/email-service/get-started/send-emails/
+- https://developers.cloudflare.com/email-service/configuration/send-bindings/
+- https://developers.cloudflare.com/email-service/reference/faq/
 
 ### PayPal cannot be securely “wired” using an email address alone
 
@@ -136,7 +141,8 @@ For local development, copy `.dev.vars.example` to `.dev.vars` and insert sandbo
 - Keep `PAYPAL_MODE=sandbox` until end-to-end testing is complete.
 - Onboard `mail.sakurasoftwaresolutions.com` in Cloudflare Email Service.
 - Verify SPF, DKIM and bounce-domain records created by Cloudflare.
-- Ensure the two `allowed_sender_addresses` in `wrangler.jsonc` exist and are authorized.
+- The Email binding is intentionally not restricted to a static sender allowlist so workspace sender identities can be selected dynamically. Application validation still limits senders to the onboarded domain.
+- Verify every address/domain used by a sender identity is permitted by your Cloudflare Email Service configuration and policy.
 - Replace `APP_URL` with the production hostname.
 
 ### 6. Run
@@ -192,8 +198,9 @@ Before accepting real customers:
 5. Enable hardware-key MFA and branch protection.
 6. Test PayPal sandbox create/capture/idempotency flows.
 7. Test sending, unsubscribe, bounce and complaint workflows on a dedicated sending subdomain.
-8. Request appropriate Cloudflare Email Service sending limits.
-9. Add monitoring, backups, incident response and a published subprocessor list.
+8. Obtain written confirmation that the intended campaign traffic is permitted by Cloudflare Email Service, or replace the delivery adapter with a marketing-email provider.
+9. Request appropriate provider sending limits.
+10. Add monitoring, backups, incident response and a published subprocessor list.
 
 See [Deployment](docs/DEPLOYMENT.md) and [Product roadmap](docs/PRODUCT-ROADMAP.md).
 

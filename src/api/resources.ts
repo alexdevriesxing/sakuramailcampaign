@@ -1,7 +1,7 @@
 import type { AuthContext, Env } from '../types';
 import { audit } from '../db';
 import { capturePayPalOrder, createPayPalOrder } from '../paypal';
-import { isValidEmail, json, normalizeEmail, nowIso, randomId, sha256Hex } from '../security';
+import { json, nowIso, randomId, sha256Hex } from '../security';
 import {
   ALLOWED_FILE_TYPES,
   HttpError,
@@ -9,7 +9,6 @@ import {
   readJson,
   requireRole,
   sanitizeFilename,
-  validSenderForEnvironment,
 } from '../http';
 
 export async function handleFilesUpload(request: Request, env: Env, context: AuthContext): Promise<Response> {
@@ -96,16 +95,11 @@ export async function handleSettingsUpdate(request: Request, env: Env, context: 
   const workspaceName = String(body.workspaceName ?? '').trim().slice(0, 120);
   const businessName = String(body.businessName ?? '').trim().slice(0, 200);
   const postalAddress = String(body.postalAddress ?? '').trim().slice(0, 500);
-  const defaultFromName = String(body.defaultFromName ?? '').trim().slice(0, 100);
-  const defaultFromEmail = normalizeEmail(body.defaultFromEmail ?? '');
-  const replyToEmail = body.replyToEmail ? normalizeEmail(body.replyToEmail) : null;
-  if (!workspaceName || !businessName || !postalAddress || !defaultFromName || !isValidEmail(defaultFromEmail)) throw new HttpError(400, 'Complete all required settings.');
-  if (!validSenderForEnvironment(defaultFromEmail, env)) throw new HttpError(400, `Sender must use the configured ${env.FROM_EMAIL.split('@')[1]} domain.`);
-  if (replyToEmail && !isValidEmail(replyToEmail)) throw new HttpError(400, 'Reply-to email is invalid.');
+  if (!workspaceName || !businessName || !postalAddress) throw new HttpError(400, 'Complete the workspace name, business name and postal address.');
   await env.DB.prepare(
-    `UPDATE workspaces SET name = ?, business_name = ?, postal_address = ?, default_from_name = ?, default_from_email = ?, reply_to_email = ?, updated_at = ? WHERE id = ?`,
+    'UPDATE workspaces SET name = ?, business_name = ?, postal_address = ?, updated_at = ? WHERE id = ?',
   )
-    .bind(workspaceName, businessName, postalAddress, defaultFromName, defaultFromEmail, replyToEmail, nowIso(), context.workspaceId)
+    .bind(workspaceName, businessName, postalAddress, nowIso(), context.workspaceId)
     .run();
   await audit(env, request, context, 'workspace.settings.update', 'workspace', context.workspaceId);
   return json({ ok: true });
