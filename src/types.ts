@@ -6,8 +6,9 @@ export interface SendJob {
 
 export interface EmailAttachment {
   filename: string;
-  contentType: string;
-  content: ArrayBuffer;
+  type: string;
+  disposition: 'attachment' | 'inline';
+  content: string | ArrayBuffer | ArrayBufferView;
 }
 
 export interface EmailBinding {
