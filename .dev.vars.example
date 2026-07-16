@@ -1,0 +1,5 @@
+# Never commit real secrets. Copy to .dev.vars for local development.
+AUTH_PEPPER=replace-with-32-plus-random-characters
+DATA_ENCRYPTION_KEY=BASE64_ENCODED_32_BYTE_KEY
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+PAYPAL_CLIENT_SECRET=replace-with-paypal-sandbox-secret

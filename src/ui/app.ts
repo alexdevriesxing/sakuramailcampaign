@@ -1,0 +1,25 @@
+import type { Env } from '../types';
+import { logo, page } from './shared';
+
+export function loginPage(env: Env): string {
+  const body = `<main class="auth-page"><a class="auth-brand" href="/"><img src="/logo.svg" alt=""><span>Sakura Mail</span></a><section class="auth-card"><div class="eyebrow">Passwordless and protected</div><h1>Welcome to Sakura Mail</h1><p>Enter your email and we’ll send a one-time verification code. New addresses create a private workspace automatically.</p>
+    <form id="login-start-form"><label>Email address<input type="email" name="email" autocomplete="email" placeholder="you@company.com" required></label><div id="turnstile-box"></div><button class="button primary large full" type="submit">Send verification code</button></form>
+    <form id="login-verify-form" hidden><label>Six-digit code<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label><button class="button primary large full" type="submit">Verify and continue</button><button class="button text full" type="button" id="restart-login">Use a different email</button></form>
+    <div class="form-message" id="auth-message" aria-live="polite"></div><p class="auth-legal">By continuing, you agree to the <a href="/terms">Terms</a> and acknowledge the <a href="/privacy">Privacy Policy</a>.</p></section></main>`;
+  return page('Sign in', body, env);
+}
+
+export function dashboardPage(env: Env): string {
+  const body = `<div class="app-shell"><aside class="sidebar">${logo}<nav><button data-view="overview" class="active">Overview</button><button data-view="campaigns">Campaigns</button><button data-view="contacts">Contacts</button><button data-view="files">Files</button><button data-view="billing">Billing</button><button data-view="settings">Settings</button><button data-view="admin" id="admin-nav" hidden>Platform admin</button></nav><div class="sidebar-footer"><span id="sidebar-email">Loading…</span><button id="logout-button">Sign out</button></div></aside>
+    <main class="app-main"><header class="app-header"><div><button class="mobile-menu" id="mobile-menu">☰</button><h1 id="view-title">Overview</h1><p id="view-subtitle">Your campaign workspace at a glance.</p></div><button class="button primary" data-action="new-campaign">+ New campaign</button></header>
+      <div id="app-alert" class="app-alert" hidden></div>
+      <section id="view-root" class="view-root"><div class="loading-card">Loading your encrypted workspace…</div></section>
+    </main>
+  </div>
+  <dialog id="campaign-dialog" class="modal"><form method="dialog" id="campaign-form"><div class="modal-head"><div><div class="eyebrow">Campaign builder</div><h2>Create a mailing</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+    <div class="form-grid"><label>Campaign name<input name="name" required maxlength="120" placeholder="Spring product update"></label><label>Subject line<input name="subject" required maxlength="998" placeholder="A fresh update for {{first_name}}"></label><label>From name<input name="fromName" required maxlength="100"></label><label>From email<input name="fromEmail" type="email" required></label><label>Reply-to<input name="replyTo" type="email"></label><label>Schedule (optional)<input name="scheduledAt" type="datetime-local"></label></div>
+    <label>HTML message<textarea name="htmlBody" rows="12" required placeholder="<h1>Hello {{first_name}}</h1><p>Your message…</p>"></textarea></label><label>Plain-text fallback<textarea name="textBody" rows="6" placeholder="Hello {{first_name}}, …"></textarea></label>
+    <div id="attachment-picker" class="attachment-picker"></div><div class="modal-actions"><button class="button ghost" value="cancel">Cancel</button><button class="button primary" type="submit" value="default">Save campaign</button></div></form></dialog>
+  <dialog id="contact-dialog" class="modal compact"><form method="dialog" id="contact-form"><div class="modal-head"><div><div class="eyebrow">Add contact</div><h2>One recipient</h2></div><button class="icon-button" value="cancel">×</button></div><label>Email<input type="email" name="email" required></label><div class="form-grid"><label>First name<input name="firstName"></label><label>Last name<input name="lastName"></label></div><label>Consent status<select name="consentStatus"><option value="express">Express</option><option value="implied">Implied</option><option value="transactional">Transactional</option><option value="unknown">Unknown</option></select></label><label>Consent source<input name="consentSource" placeholder="Website signup form"></label><div class="modal-actions"><button class="button ghost" value="cancel">Cancel</button><button class="button primary" type="submit">Add contact</button></div></form></dialog>`;
+  return page('Dashboard', body, env, { app: true });
+}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
+  <title id="title">Sakura Mail</title>
+  <desc id="desc">A flowing pink S surrounded by sakura petals</desc>
+  <defs>
+    <linearGradient id="pink" x1="25" y1="20" x2="160" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff8fba"/><stop offset=".48" stop-color="#f34f91"/><stop offset="1" stop-color="#df2f73"/>
+    </linearGradient>
+    <linearGradient id="blush" x1="20" y1="35" x2="175" y2="155" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd5e5"/><stop offset="1" stop-color="#ff82b2"/>
+    </linearGradient>
+  </defs>
+  <path d="M153 46c-23-17-66-18-92-2-20 12-31 31-27 48 4 17 21 26 40 30 16 4 29 7 31 15 2 8-9 16-24 17-18 2-34-5-41-18 4 24 29 36 56 31 25-4 44-18 44-36 0-20-21-29-44-35-14-4-27-8-27-17 0-8 12-16 27-18 20-3 39 3 50 15-4-13-14-23-27-29 13 1 25 6 34 14Z" fill="url(#pink)"/>
+  <path d="M35 111c-13-7-17-22-12-37-11 15-10 34 1 46 9 10 23 13 37 9-12-2-20-7-26-18Zm6-54C62 25 105 16 143 31 105 8 52 19 29 53 11 79 18 105 37 120 22 101 23 81 41 57Zm113 51c8 17 4 38-13 54-18 18-49 25-77 17 34 15 73 7 94-17 18-20 20-43 8-62 3 14-1 26-12 38Z" fill="url(#blush)" opacity=".96"/>
+  <path d="M158 26c5-8 12-11 17-11 2 7 0 15-6 21-4 4-9 6-14 7-1-6-1-12 3-17Zm18 38c7-6 16-7 23-3-2 7-8 13-15 15-6 1-12 0-17-3 2-4 5-7 9-9ZM27 140c-7-4-14-3-20 1 3 7 9 11 16 11 6 0 11-3 15-7-3-2-7-4-11-5Z" fill="url(#pink)"/>
+</svg>
