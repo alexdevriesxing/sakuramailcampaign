@@ -169,16 +169,16 @@ export async function renderReports() {
   const eng = data.engagement || {};
   const hasSends = totals.attempted > 0 || totals.queued > 0;
   $('#view-root').innerHTML = `<div class="stats-grid">
-      <article class="stat-card"><span>Delivered</span><strong>${formatNumber(totals.accepted)}</strong><small>accepted by provider</small></article>
-      <article class="stat-card"><span>Delivery rate</span><strong>${percent(totals.deliveryRate)}</strong><small>${formatNumber(totals.attempted)} attempted</small></article>
-      <article class="stat-card"><span>Failed</span><strong>${formatNumber(totals.failed)}</strong><small>${formatNumber(totals.bounced)} bounced · ${formatNumber(totals.complained)} complaints</small></article>
-      <article class="stat-card"><span>In queue</span><strong>${formatNumber(totals.queued)}</strong><small>awaiting delivery or retry</small></article>
+      <article class="stat-card" data-tip="Messages the email provider accepted for delivery. Not the same as inbox placement."><span>Delivered</span><strong>${formatNumber(totals.accepted)}</strong><small>accepted by provider</small></article>
+      <article class="stat-card" data-tip="Delivered ÷ attempted. Below ~95% usually means list-hygiene or authentication issues."><span>Delivery rate</span><strong>${percent(totals.deliveryRate)}</strong><small>${formatNumber(totals.attempted)} attempted</small></article>
+      <article class="stat-card" data-tip="Rejected, bounced or marked as spam. Hard bounces are auto-suppressed from future sends."><span>Failed</span><strong>${formatNumber(totals.failed)}</strong><small>${formatNumber(totals.bounced)} bounced · ${formatNumber(totals.complained)} complaints</small></article>
+      <article class="stat-card" data-tip="Queued messages still being delivered or awaiting a retry."><span>In queue</span><strong>${formatNumber(totals.queued)}</strong><small>awaiting delivery or retry</small></article>
     </div>
     <div class="stats-grid" style="margin-top:16px">
-      <article class="stat-card"><span>Open rate</span><strong>${percent(eng.openRate)}</strong><small>${formatNumber(eng.uniqueOpeners || 0)} unique · ${formatNumber(eng.totalOpens || 0)} total</small></article>
-      <article class="stat-card"><span>Click rate</span><strong>${percent(eng.clickRate)}</strong><small>${formatNumber(eng.uniqueClickers || 0)} unique · ${formatNumber(eng.totalClicks || 0)} total</small></article>
-      <article class="stat-card"><span>Click-to-open</span><strong>${percent(eng.clickToOpenRate)}</strong><small>clickers ÷ openers</small></article>
-      <article class="stat-card"><span>Tracked engagement</span><strong>${formatNumber((eng.totalOpens || 0) + (eng.totalClicks || 0))}</strong><small>opens + clicks logged</small></article>
+      <article class="stat-card" data-tip="Unique recipients who opened ÷ delivered. Requires open tracking; approximate because some clients pre-fetch images."><span>Open rate</span><strong>${percent(eng.openRate)}</strong><small>${formatNumber(eng.uniqueOpeners || 0)} unique · ${formatNumber(eng.totalOpens || 0)} total</small></article>
+      <article class="stat-card" data-tip="Unique recipients who clicked a link ÷ delivered. Requires click tracking. More reliable than opens."><span>Click rate</span><strong>${percent(eng.clickRate)}</strong><small>${formatNumber(eng.uniqueClickers || 0)} unique · ${formatNumber(eng.totalClicks || 0)} total</small></article>
+      <article class="stat-card" data-tip="Clickers ÷ openers. Measures how compelling your content is for people who opened."><span>Click-to-open</span><strong>${percent(eng.clickToOpenRate)}</strong><small>clickers ÷ openers</small></article>
+      <article class="stat-card" data-tip="Total open and click events recorded across all tracked campaigns."><span>Tracked engagement</span><strong>${formatNumber((eng.totalOpens || 0) + (eng.totalClicks || 0))}</strong><small>opens + clicks logged</small></article>
     </div>
     <section class="panel report-chart"><div class="panel-head"><h2>Sends · last ${data.windowDays} days</h2>${chartLegend()}</div>${hasSends ? sendsChart(data.series) : emptyState('No sends in this window yet. The chart fills in as campaigns deliver.')}</section>
     <div class="report-cols wide-left">

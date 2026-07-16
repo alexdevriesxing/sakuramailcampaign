@@ -1,6 +1,6 @@
 import type { Env } from '../types';
 import { audit } from '../db';
-import { checkOrigin, clearSessionCookie, json } from '../security';
+import { checkOrigin, clearSessionCookie, enforceRateLimit, hmacHex, json } from '../security';
 import { HttpError, readJson, requireAuth, requireRole, sanitizeFilename } from '../http';
 import { handleAuthStart, handleAuthVerify, handleDashboard, handleMe } from './auth';
 import {
@@ -96,6 +96,8 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   const campaignTestMatch = path.match(/^\/api\/campaigns\/([^/]+)\/test$/);
   if (campaignTestMatch && request.method === 'POST') {
     requireRole(context, ['owner', 'admin', 'editor']);
+    const rateKey = await hmacHex(env.AUTH_PEPPER, `test-send:${context.userId}`);
+    if (!(await enforceRateLimit(env, rateKey, 20, 3600))) throw new HttpError(429, 'Too many test sends. Please wait before trying again.');
     const campaignId = decodeURIComponent(campaignTestMatch[1]!);
     const owns = await env.DB.prepare('SELECT 1 FROM campaigns WHERE id = ? AND workspace_id = ?').bind(campaignId, context.workspaceId).first();
     if (!owns) throw new HttpError(404, 'Campaign not found.');
