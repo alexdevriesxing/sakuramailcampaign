@@ -2,6 +2,7 @@ import type { Env, SendJob } from './types';
 import { authenticate } from './db';
 import { deliverJob, finalizeCampaignIfComplete } from './email';
 import { handleApi } from './api/router';
+import { handleClickRedirect, handleOpenPixel } from './api/tracking';
 import { dispatchCampaign } from './api/campaigns';
 import { HttpError, html, withSecurity } from './http';
 import { escapeHtml, json, nowIso, randomId, verifyUnsubscribeToken } from './security';
@@ -44,6 +45,10 @@ async function fetchHandler(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   try {
     if (url.pathname.startsWith('/api/')) return withSecurity(await handleApi(request, env, url), env);
+    const openMatch = url.pathname.match(/^\/o\/([^/]+)$/);
+    if (openMatch && request.method === 'GET') return handleOpenPixel(env, decodeURIComponent(openMatch[1]!));
+    const clickMatch = url.pathname.match(/^\/c\/([^/]+)$/);
+    if (clickMatch && request.method === 'GET') return handleClickRedirect(env, decodeURIComponent(clickMatch[1]!));
     const unsubscribeMatch = url.pathname.match(/^\/u\/([^/]+)$/);
     if (unsubscribeMatch && ['GET', 'POST'].includes(request.method)) return handleUnsubscribe(request, env, decodeURIComponent(unsubscribeMatch[1]!));
     if (request.method !== 'GET' && request.method !== 'HEAD') throw new HttpError(405, 'Method not allowed.');

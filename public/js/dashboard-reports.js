@@ -110,7 +110,7 @@ function breakdownList(items = [], palette = REASON_PALETTE) {
 
 function campaignPerformance(rows = []) {
   if (!rows.length) return emptyState('No sent campaigns yet — performance appears once a campaign delivers.');
-  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Campaign</th><th>Status</th><th>Recipients</th><th>Delivered</th><th>Failed</th><th>Delivery rate</th></tr></thead><tbody>${rows
+  return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Campaign</th><th>Status</th><th>Recipients</th><th>Delivered</th><th>Opens</th><th>Clicks</th><th>Failed</th><th>Delivery rate</th></tr></thead><tbody>${rows
     .map((c) => {
       const delivered = Number(c.sent_count) || 0;
       const failed = Number(c.failed_count) || 0;
@@ -118,14 +118,24 @@ function campaignPerformance(rows = []) {
       const rate = attempted ? delivered / attempted : null;
       const pct = rate == null ? 0 : Math.round(rate * 100);
       const color = rate == null ? COLORS.muted : rate >= 0.95 ? COLORS.accepted : rate >= 0.8 ? COLORS.amber : COLORS.failed;
-      return `<tr><td><b>${escapeHtml(c.name)}</b><br><small>${escapeHtml(c.subject)}</small></td><td>${statusPill(c.status)}</td><td>${formatNumber(c.recipient_count)}</td><td>${formatNumber(delivered)}</td><td>${formatNumber(failed)}</td><td><div class="rate-cell"><div class="rate-bar"><span style="width:${pct}%;background:${color}"></span></div>${ratePill(rate)}</div></td></tr>`;
+      const opens = Number(c.unique_openers) || 0;
+      const clicks = Number(c.unique_clickers) || 0;
+      return `<tr><td><b>${escapeHtml(c.name)}</b><br><small>${escapeHtml(c.subject)}</small></td><td>${statusPill(c.status)}</td><td>${formatNumber(c.recipient_count)}</td><td>${formatNumber(delivered)}</td><td>${opens ? formatNumber(opens) : '—'}</td><td>${clicks ? formatNumber(clicks) : '—'}</td><td>${formatNumber(failed)}</td><td><div class="rate-cell"><div class="rate-bar"><span style="width:${pct}%;background:${color}"></span></div>${ratePill(rate)}</div></td></tr>`;
     })
     .join('')}</tbody></table></div>`;
+}
+
+function topLinksPanel(rows = []) {
+  if (!rows.length) return '';
+  return `<section class="panel" style="margin-top:18px"><div class="panel-head"><h2>Top clicked links</h2></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Link</th><th>Unique clickers</th><th>Total clicks</th></tr></thead><tbody>${rows
+    .map((row) => `<tr><td class="link-cell"><a href="${escapeHtml(row.url)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(row.url)}</a></td><td>${formatNumber(row.clickers)}</td><td>${formatNumber(row.clicks)}</td></tr>`)
+    .join('')}</tbody></table></div></section>`;
 }
 
 export async function renderReports() {
   const data = await api('/api/reports');
   const totals = data.totals;
+  const eng = data.engagement || {};
   const hasSends = totals.attempted > 0 || totals.queued > 0;
   $('#view-root').innerHTML = `<div class="stats-grid">
       <article class="stat-card"><span>Delivered</span><strong>${formatNumber(totals.accepted)}</strong><small>accepted by provider</small></article>
@@ -133,11 +143,18 @@ export async function renderReports() {
       <article class="stat-card"><span>Failed</span><strong>${formatNumber(totals.failed)}</strong><small>${formatNumber(totals.bounced)} bounced · ${formatNumber(totals.complained)} complaints</small></article>
       <article class="stat-card"><span>In queue</span><strong>${formatNumber(totals.queued)}</strong><small>awaiting delivery or retry</small></article>
     </div>
+    <div class="stats-grid" style="margin-top:16px">
+      <article class="stat-card"><span>Open rate</span><strong>${percent(eng.openRate)}</strong><small>${formatNumber(eng.uniqueOpeners || 0)} unique · ${formatNumber(eng.totalOpens || 0)} total</small></article>
+      <article class="stat-card"><span>Click rate</span><strong>${percent(eng.clickRate)}</strong><small>${formatNumber(eng.uniqueClickers || 0)} unique · ${formatNumber(eng.totalClicks || 0)} total</small></article>
+      <article class="stat-card"><span>Click-to-open</span><strong>${percent(eng.clickToOpenRate)}</strong><small>clickers ÷ openers</small></article>
+      <article class="stat-card"><span>Tracked engagement</span><strong>${formatNumber((eng.totalOpens || 0) + (eng.totalClicks || 0))}</strong><small>opens + clicks logged</small></article>
+    </div>
     <section class="panel report-chart"><div class="panel-head"><h2>Sends · last ${data.windowDays} days</h2>${chartLegend()}</div>${hasSends ? sendsChart(data.series) : emptyState('No sends in this window yet. The chart fills in as campaigns deliver.')}</section>
     <div class="report-cols wide-left">
       <section class="panel"><div class="panel-head"><h2>Campaign performance</h2></div>${campaignPerformance(data.campaigns)}</section>
       <section class="panel"><div class="panel-head"><h2>Top failure reasons</h2></div>${breakdownList(data.failures, REASON_PALETTE)}</section>
     </div>
+    ${topLinksPanel(data.topLinks)}
     <div class="report-cols thirds">
       <section class="panel"><div class="panel-head"><h2>Contacts by status</h2></div>${breakdownList(data.contactsByStatus, STATUS_PALETTE)}</section>
       <section class="panel"><div class="panel-head"><h2>Consent breakdown</h2></div>${breakdownList(data.contactsByConsent, CONSENT_PALETTE)}</section>

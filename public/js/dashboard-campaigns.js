@@ -78,6 +78,8 @@ export async function saveCampaign(event) {
     htmlBody: formData.get('htmlBody'),
     textBody: formData.get('textBody'),
     attachmentIds: formData.getAll('attachmentIds'),
+    trackOpens: formData.get('trackOpens') === 'on',
+    trackClicks: formData.get('trackClicks') === 'on',
   };
   try {
     const result = await api('/api/campaigns', { method: 'POST', body: JSON.stringify(body) });

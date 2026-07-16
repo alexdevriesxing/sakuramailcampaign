@@ -10,6 +10,8 @@ The customer is the controller/business and Sakura Mail is the processor/service
 
 Sakura Mail processes customer personal data only to host, organize, schedule, transmit, suppress, secure, troubleshoot and delete it according to the service agreement and customer actions, unless law requires otherwise.
 
+Where the customer enables per-campaign open or click tracking, Sakura Mail records the resulting engagement events (opens and clicks by recipient and campaign) on the customer's documented instruction. The customer is the controller for that measurement and is responsible for its lawful basis and any required recipient consent.
+
 ## Confidentiality
 
 People authorized to process customer data must be bound by confidentiality and receive access only as needed for their role.

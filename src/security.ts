@@ -122,6 +122,34 @@ export async function verifyUnsubscribeToken(
   }
 }
 
+export interface TrackingTokenPayload {
+  workspaceId: string;
+  campaignId: string;
+  contactId: string;
+  /** Present only for click tokens; the redirect target is bound into the signature to prevent open-redirect abuse. */
+  url?: string;
+}
+
+export async function createTrackingToken(env: Env, payload: TrackingTokenPayload): Promise<string> {
+  const encoded = base64UrlEncode(encoder.encode(JSON.stringify(payload)));
+  const signature = await hmacBase64Url(env.AUTH_PEPPER, `track:${encoded}`);
+  return `${encoded}.${signature}`;
+}
+
+export async function verifyTrackingToken(env: Env, token: string): Promise<TrackingTokenPayload | null> {
+  const [encoded, provided] = token.split('.');
+  if (!encoded || !provided) return null;
+  const expected = await hmacBase64Url(env.AUTH_PEPPER, `track:${encoded}`);
+  if (!constantTimeEqual(expected, provided)) return null;
+  try {
+    const payload = JSON.parse(decoder.decode(base64UrlDecode(encoded))) as TrackingTokenPayload;
+    if (!payload.workspaceId || !payload.campaignId || !payload.contactId) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 export function parseCookies(request: Request): Record<string, string> {
   const header = request.headers.get('Cookie') ?? '';
   const values: Record<string, string> = {};

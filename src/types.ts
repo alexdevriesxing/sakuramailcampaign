@@ -74,6 +74,8 @@ export interface CampaignRow {
   sender_identity_id: string | null;
   segment_id: string | null;
   audience_filter_json: string;
+  track_opens: number;
+  track_clicks: number;
 }
 
 export interface ContactRow {

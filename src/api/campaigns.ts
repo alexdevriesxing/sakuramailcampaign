@@ -19,7 +19,11 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
     attachmentIds?: string[];
     segmentId?: string | null;
     audienceRules?: unknown;
+    trackOpens?: boolean;
+    trackClicks?: boolean;
   }>(request);
+  const trackOpens = body.trackOpens === true ? 1 : 0;
+  const trackClicks = body.trackClicks === true ? 1 : 0;
   const name = String(body.name ?? '').trim().slice(0, 120);
   const subject = String(body.subject ?? '').trim().slice(0, 998);
   const htmlBody = String(body.htmlBody ?? '').trim();
@@ -88,8 +92,8 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
     env.DB.prepare(
       `INSERT INTO campaigns (
         id, workspace_id, name, subject, from_name, from_email, reply_to, html_body, text_body, status, scheduled_at,
-        sender_identity_id, segment_id, audience_filter_json, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sender_identity_id, segment_id, audience_filter_json, track_opens, track_clicks, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       context.workspaceId,
@@ -105,6 +109,8 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
       sender.id,
       segmentId,
       JSON.stringify(audienceRules),
+      trackOpens,
+      trackClicks,
       now,
       now,
     ),

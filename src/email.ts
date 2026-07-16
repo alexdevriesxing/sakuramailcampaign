@@ -1,5 +1,17 @@
 import type { CampaignRow, ContactRow, Env, SendJob } from './types';
-import { createUnsubscribeToken, decryptEmail, escapeHtml, nowIso, randomId } from './security';
+import { createTrackingToken, createUnsubscribeToken, decryptEmail, escapeHtml, nowIso, randomId } from './security';
+import { rewriteLinksForTracking, trackingPixel } from './api/tracking';
+
+/**
+ * Classify a delivery error as a permanent bounce or a transient failure worth
+ * retrying. Permanent bounces flag the contact so future campaigns exclude them.
+ * Conservative on purpose: only clear "bad recipient" signals count as a bounce.
+ */
+export function isPermanentBounce(message: string): boolean {
+  return /\b(5\.[157]\.[0-9]|55[0-4])\b|invalid recipient|no such (user|mailbox|address)|user unknown|mailbox (unavailable|not found|does not exist)|address rejected|recipient (address )?rejected|does not exist|blocked|blocklist|on the suppression/i.test(
+    message,
+  );
+}
 
 function personalize(template: string, values: Record<string, string>): string {
   return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, key: string) => values[key] ?? '');
@@ -85,12 +97,18 @@ export async function deliverJob(env: Env, job: SendJob): Promise<void> {
     expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
   });
   const unsubscribeUrl = `${env.APP_URL}/u/${encodeURIComponent(token)}`;
+  const trackingKind = campaign.track_opens && campaign.track_clicks ? 'open and click' : campaign.track_opens ? 'open' : campaign.track_clicks ? 'click' : '';
+  const trackingNotice = trackingKind ? `<br><span style="color:#9b8791">This message uses ${trackingKind} measurement.</span>` : '';
   const footer = `
     <div style="margin-top:32px;padding-top:18px;border-top:1px solid #eadde3;color:#725d67;font:12px/1.5 Arial,sans-serif">
       Sent by ${escapeHtml(workspace.business_name)} · ${escapeHtml(workspace.postal_address)}<br>
-      <a href="${unsubscribeUrl}" style="color:#d82f72">Unsubscribe</a>
+      <a href="${unsubscribeUrl}" style="color:#d82f72">Unsubscribe</a>${trackingNotice}
     </div>`;
-  const html = `${personalize(campaign.html_body, values)}${footer}`;
+  let renderedHtml = personalize(campaign.html_body, values);
+  const trackBase = { workspaceId: job.workspaceId, campaignId: job.campaignId, contactId: job.contactId };
+  if (campaign.track_clicks) renderedHtml = await rewriteLinksForTracking(env, renderedHtml, trackBase);
+  if (campaign.track_opens) renderedHtml += trackingPixel(env, await createTrackingToken(env, trackBase));
+  const html = `${renderedHtml}${footer}`;
   const textBase = personalize(campaign.text_body || stripTags(campaign.html_body), {
     email,
     first_name: contact.first_name ?? '',
@@ -136,13 +154,36 @@ export async function deliverJob(env: Env, job: SendJob): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : 'Unknown delivery failure';
     const now = nowIso();
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO send_events (id, workspace_id, campaign_id, contact_id, status, error_code, error_message, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'queued', 'DELIVERY_RETRY', ?, ?, ?)
-         ON CONFLICT(campaign_id, contact_id) DO UPDATE SET status = 'queued', error_code = 'DELIVERY_RETRY', error_message = excluded.error_message, updated_at = excluded.updated_at`,
-      ).bind(randomId('send_'), job.workspaceId, job.campaignId, job.contactId, message, now, now),
-    ]);
+    if (isPermanentBounce(message)) {
+      // Hard bounce: flag the contact and suppress it so future campaigns exclude
+      // it automatically, then acknowledge the job (do not retry a dead address).
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO send_events (id, workspace_id, campaign_id, contact_id, status, error_code, error_message, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'bounced', 'HARD_BOUNCE', ?, ?, ?)
+           ON CONFLICT(campaign_id, contact_id) DO UPDATE SET status = 'bounced', error_code = 'HARD_BOUNCE', error_message = excluded.error_message, updated_at = excluded.updated_at`,
+        ).bind(randomId('send_'), job.workspaceId, job.campaignId, job.contactId, message, now, now),
+        env.DB.prepare("UPDATE contacts SET status = 'bounced', updated_at = ? WHERE id = ? AND workspace_id = ? AND status = 'active'").bind(now, job.contactId, job.workspaceId),
+        env.DB.prepare(
+          `INSERT INTO suppressions (workspace_id, email_hash, reason, created_at) VALUES (?, ?, 'bounce', ?)
+           ON CONFLICT(workspace_id, email_hash) DO NOTHING`,
+        ).bind(job.workspaceId, contact.email_hash, now),
+        env.DB.prepare(
+          `UPDATE campaigns SET
+            sent_count = (SELECT COUNT(*) FROM send_events WHERE campaign_id = ? AND status = 'accepted'),
+            failed_count = (SELECT COUNT(*) FROM send_events WHERE campaign_id = ? AND status IN ('failed','bounced','complained')),
+            updated_at = ? WHERE id = ?`,
+        ).bind(job.campaignId, job.campaignId, now, job.campaignId),
+      ]);
+      return;
+    }
+    await env.DB.prepare(
+      `INSERT INTO send_events (id, workspace_id, campaign_id, contact_id, status, error_code, error_message, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'queued', 'DELIVERY_RETRY', ?, ?, ?)
+       ON CONFLICT(campaign_id, contact_id) DO UPDATE SET status = 'queued', error_code = 'DELIVERY_RETRY', error_message = excluded.error_message, updated_at = excluded.updated_at`,
+    )
+      .bind(randomId('send_'), job.workspaceId, job.campaignId, job.contactId, message, now, now)
+      .run();
     throw error;
   }
 }

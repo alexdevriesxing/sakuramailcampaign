@@ -15,6 +15,7 @@ Sakura Mail processes account, billing, security and service-operation data as a
 - PayPal order identifiers, amounts, status and capture references.
 - Encrypted recipient addresses, names, consent records and customer-supplied metadata.
 - Campaign content, attachments, schedules and delivery events.
+- Optional, per-campaign engagement events (email opens and link clicks) recorded only when the campaign sender explicitly enables tracking for that campaign.
 - Suppression, security and audit records.
 - Limited technical information such as IP-derived security hashes and user-agent strings.
 
@@ -49,6 +50,16 @@ Cloud services may process data in multiple countries. Appropriate transfer safe
 ## Cookies
 
 The application uses an essential authentication cookie. Turnstile and PayPal may process data needed for anti-abuse and checkout. The starter does not include advertising cookies.
+
+## Email measurement (open and click tracking)
+
+Open and click tracking is **off by default** and is enabled per campaign by the sender, not by Sakura Mail. When a sender enables it:
+
+- **Open tracking** embeds a 1×1 pixel that requests an image from this service when the message is displayed, recording an open for that recipient and campaign. Open counts are approximate because some mail clients (for example, Apple Mail Privacy Protection) pre-fetch or block images.
+- **Click tracking** rewrites links so they pass through a signed redirect on this service, recording which recipient clicked which link before forwarding them to the original destination.
+- Messages that use tracking disclose it to recipients in the footer.
+
+Senders act as the controller for this measurement and are responsible for a lawful basis and any consent their jurisdiction requires (for example, GDPR/ePrivacy). Engagement records are workspace-scoped and are deleted with the campaign or contact.
 
 ## Contact and changes
 

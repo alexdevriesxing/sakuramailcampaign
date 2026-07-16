@@ -119,6 +119,42 @@ export async function handleWorkspaceReports(env: Env, context: AuthContext): Pr
   const accepted = Number(totals?.accepted ?? 0);
   const failed = Number(totals?.failed ?? 0) + Number(totals?.bounced ?? 0) + Number(totals?.complained ?? 0);
 
+  const [openTotals, clickTotals, topLinks, campaignOpens, campaignClicks] = await Promise.all([
+    env.DB.prepare('SELECT COUNT(*) AS unique_openers, COALESCE(SUM(hits), 0) AS total_opens FROM email_opens WHERE workspace_id = ?')
+      .bind(workspaceId)
+      .first<{ unique_openers: number; total_opens: number }>(),
+    env.DB.prepare('SELECT COUNT(DISTINCT contact_id) AS unique_clickers, COALESCE(SUM(hits), 0) AS total_clicks FROM email_clicks WHERE workspace_id = ?')
+      .bind(workspaceId)
+      .first<{ unique_clickers: number; total_clicks: number }>(),
+    env.DB.prepare('SELECT url, COUNT(DISTINCT contact_id) AS clickers, COALESCE(SUM(hits), 0) AS clicks FROM email_clicks WHERE workspace_id = ? GROUP BY url ORDER BY clicks DESC LIMIT 8')
+      .bind(workspaceId)
+      .all<{ url: string; clickers: number; clicks: number }>(),
+    env.DB.prepare('SELECT campaign_id, COUNT(*) AS openers, COALESCE(SUM(hits), 0) AS opens FROM email_opens WHERE workspace_id = ? GROUP BY campaign_id')
+      .bind(workspaceId)
+      .all<{ campaign_id: string; openers: number; opens: number }>(),
+    env.DB.prepare('SELECT campaign_id, COUNT(DISTINCT contact_id) AS clickers, COALESCE(SUM(hits), 0) AS clicks FROM email_clicks WHERE workspace_id = ? GROUP BY campaign_id')
+      .bind(workspaceId)
+      .all<{ campaign_id: string; clickers: number; clicks: number }>(),
+  ]);
+
+  const opensByCampaign = new Map(campaignOpens.results.map((row) => [row.campaign_id, row]));
+  const clicksByCampaign = new Map(campaignClicks.results.map((row) => [row.campaign_id, row]));
+  const campaignsEnriched = (campaigns.results as Array<Record<string, unknown>>).map((row) => {
+    const id = row.id as string;
+    const open = opensByCampaign.get(id);
+    const click = clicksByCampaign.get(id);
+    return {
+      ...row,
+      unique_openers: Number(open?.openers ?? 0),
+      total_opens: Number(open?.opens ?? 0),
+      unique_clickers: Number(click?.clickers ?? 0),
+      total_clicks: Number(click?.clicks ?? 0),
+    };
+  });
+
+  const uniqueOpeners = Number(openTotals?.unique_openers ?? 0);
+  const uniqueClickers = Number(clickTotals?.unique_clickers ?? 0);
+
   return json({
     windowDays: WINDOW_DAYS,
     totals: {
@@ -130,8 +166,18 @@ export async function handleWorkspaceReports(env: Env, context: AuthContext): Pr
       attempted: accepted + failed,
       deliveryRate: deliveryRate(accepted, failed),
     },
+    engagement: {
+      uniqueOpeners,
+      totalOpens: Number(openTotals?.total_opens ?? 0),
+      uniqueClickers,
+      totalClicks: Number(clickTotals?.total_clicks ?? 0),
+      openRate: accepted > 0 ? uniqueOpeners / accepted : null,
+      clickRate: accepted > 0 ? uniqueClickers / accepted : null,
+      clickToOpenRate: uniqueOpeners > 0 ? uniqueClickers / uniqueOpeners : null,
+    },
+    topLinks: topLinks.results,
     series: fillSeries(series.results),
-    campaigns: campaigns.results,
+    campaigns: campaignsEnriched,
     failures: failures.results,
     contactsByStatus: contactsByStatus.results,
     contactsByConsent: contactsByConsent.results,
