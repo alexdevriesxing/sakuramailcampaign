@@ -12,11 +12,10 @@
   },
   "vars": {
     "APP_NAME": "Sakura Mail",
-    "APP_URL": "https://mail.sakurasoftwaresolutions.com",
+    "APP_URL": "https://sakura-mail-campaign.alexdevriesxing.workers.dev",
     "FROM_EMAIL": "hello@mail.sakurasoftwaresolutions.com",
     "FROM_NAME": "Sakura Mail",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
-    "PAYPAL_CLIENT_ID": "REPLACE_WITH_PAYPAL_CLIENT_ID",
     "PAYPAL_MODE": "sandbox",
     "PAYPAL_RECEIVER_EMAIL": "alexdevriesxing@gmail.com",
     "ADMIN_EMAILS": "alexdevriesxing@gmail.com",
@@ -27,7 +26,7 @@
     {
       "binding": "DB",
       "database_name": "sakura-mail-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "245feeca-d13e-4e1c-a64b-72dafc493dd9",
       "migrations_dir": "migrations"
     }
   ],

@@ -150,7 +150,14 @@ export function checkOrigin(request: Request, env: Env): boolean {
   const origin = request.headers.get('Origin');
   if (!origin) return false;
   try {
-    return new URL(origin).origin === new URL(env.APP_URL).origin || origin === 'http://localhost:8787';
+    const requestOrigin = new URL(origin).origin;
+    // Same-origin is the authoritative CSRF check: the browser sets Origin to the
+    // true initiating origin and it cannot be forged cross-site, so a request whose
+    // Origin equals the worker's own origin is always first-party. Accepting it lets
+    // the app run on workers.dev and any attached custom domain without reconfiguration.
+    if (requestOrigin === new URL(request.url).origin) return true;
+    if (requestOrigin === new URL(env.APP_URL).origin) return true;
+    return origin === 'http://localhost:8787';
   } catch {
     return false;
   }
