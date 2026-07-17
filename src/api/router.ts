@@ -20,6 +20,7 @@ import { handleSenderCreate, handleSenderDelete, handleSendersList, handleSender
 import { countAudience, handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate, resolveAudienceRules, validateAudienceRules } from './audience';
 import { handleCampaignRecipients, handlePlatformStats, handleWorkspaceReports } from './reports';
 import { handleTemplateCreate, handleTemplateDelete, handleTemplateUpdate, handleTemplatesList } from './templates';
+import { handleSuppressionCreate, handleSuppressionDelete, handleSuppressionsList } from './suppressions';
 import { sendTestEmail } from '../email';
 
 export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
@@ -66,6 +67,11 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   if (path === '/api/contacts/delete' && request.method === 'POST') return handleContactsBulkDelete(request, env, context);
   const contactMatch = path.match(/^\/api\/contacts\/([^/]+)$/);
   if (contactMatch && request.method === 'DELETE') return handleContactDelete(request, env, context, decodeURIComponent(contactMatch[1]!));
+
+  if (path === '/api/suppressions' && request.method === 'GET') return handleSuppressionsList(env, context);
+  if (path === '/api/suppressions' && request.method === 'POST') return handleSuppressionCreate(request, env, context);
+  const suppressionMatch = path.match(/^\/api\/suppressions\/([^/]+)$/);
+  if (suppressionMatch && request.method === 'DELETE') return handleSuppressionDelete(request, env, context, decodeURIComponent(suppressionMatch[1]!));
 
   if (path === '/api/tags' && request.method === 'GET') return handleTagsList(env, context);
   if (path === '/api/tags' && request.method === 'POST') return handleTagCreate(request, env, context);

@@ -93,7 +93,8 @@ export async function handleContactsList(request: Request, env: Env, context: Au
   const whereSql = where.join(' AND ');
   const [rows, filtered, workspaceTotal] = await Promise.all([
     env.DB.prepare(
-      `SELECT c.id, c.email_ciphertext, c.email_iv, c.first_name, c.last_name, c.consent_status, c.consent_source, c.status, c.created_at
+      `SELECT c.id, c.email_ciphertext, c.email_iv, c.first_name, c.last_name, c.consent_status, c.consent_source, c.status, c.created_at,
+        EXISTS (SELECT 1 FROM suppressions s WHERE s.workspace_id = c.workspace_id AND s.email_hash = c.email_hash) AS suppressed
        FROM contacts c WHERE ${whereSql}
        ORDER BY ${CONTACT_SORTS[sortBy]} ${sortDirection}, c.id ${sortDirection} LIMIT ? OFFSET ?`,
     ).bind(...params, limit, offset).all<{
@@ -106,6 +107,7 @@ export async function handleContactsList(request: Request, env: Env, context: Au
       consent_source: string | null;
       status: string;
       created_at: string;
+      suppressed: number;
     }>(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM contacts c WHERE ${whereSql}`).bind(...params).first<{ count: number }>(),
     env.DB.prepare('SELECT COUNT(*) AS count FROM contacts WHERE workspace_id = ?').bind(context.workspaceId).first<{ count: number }>(),
@@ -135,6 +137,7 @@ export async function handleContactsList(request: Request, env: Env, context: Au
     consent_status: row.consent_status,
     consent_source: row.consent_source,
     status: row.status,
+    suppressed: Boolean(row.suppressed),
     created_at: row.created_at,
     tags: tagMap.get(row.id) ?? [],
   })));
