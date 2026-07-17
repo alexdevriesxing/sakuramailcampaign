@@ -2,27 +2,51 @@ import type { AuthContext, CampaignRow, Env } from '../types';
 import { audit } from '../db';
 import { isValidEmail, json, normalizeEmail, nowIso, randomId } from '../security';
 import { HttpError, MAX_FILE_BYTES, readJson, requireRole, validSenderForEnvironment } from '../http';
-import { countAudience, getEligibleContactIds, resolveAudienceRules, sanitizeAudienceRules, validateAudienceRules } from './audience';
+import { type AudienceRules, countAudience, getEligibleContactIds, resolveAudienceRules, sanitizeAudienceRules, validateAudienceRules } from './audience';
 
-export async function handleCampaignCreate(request: Request, env: Env, context: AuthContext): Promise<Response> {
-  requireRole(context, ['owner', 'admin', 'editor']);
-  const body = await readJson<{
-    name?: string;
-    subject?: string;
-    senderId?: string;
-    fromName?: string;
-    fromEmail?: string;
-    replyTo?: string;
-    htmlBody?: string;
-    textBody?: string;
-    scheduledAt?: string | null;
-    attachmentIds?: string[];
-    segmentId?: string | null;
-    audienceRules?: unknown;
-    trackOpens?: boolean;
-    trackClicks?: boolean;
-    preheader?: string;
-  }>(request);
+/** Statuses a campaign can still be changed or removed in. Anything sending or sent is frozen. */
+const MUTABLE_STATUSES = ['draft', 'scheduled', 'failed'];
+
+interface CampaignInput {
+  name?: string;
+  subject?: string;
+  senderId?: string;
+  fromName?: string;
+  fromEmail?: string;
+  replyTo?: string;
+  htmlBody?: string;
+  textBody?: string;
+  scheduledAt?: string | null;
+  attachmentIds?: string[];
+  segmentId?: string | null;
+  audienceRules?: unknown;
+  trackOpens?: boolean;
+  trackClicks?: boolean;
+  preheader?: string;
+}
+
+interface ValidatedCampaign {
+  name: string;
+  subject: string;
+  preheader: string;
+  htmlBody: string;
+  textBody: string;
+  fromName: string;
+  fromEmail: string;
+  replyTo: string | null;
+  senderIdentityId: string;
+  segmentId: string | null;
+  audienceRules: AudienceRules;
+  estimatedRecipients: number;
+  scheduledAt: string | null;
+  status: 'draft' | 'scheduled';
+  attachmentIds: string[];
+  trackOpens: number;
+  trackClicks: number;
+}
+
+/** Shared validation for creating and editing a campaign, so both paths enforce identical rules. */
+async function validateCampaignInput(env: Env, context: AuthContext, body: CampaignInput): Promise<ValidatedCampaign> {
   const trackOpens = body.trackOpens === true ? 1 : 0;
   const trackClicks = body.trackClicks === true ? 1 : 0;
   const name = String(body.name ?? '').trim().slice(0, 120);
@@ -59,7 +83,7 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
   const estimatedRecipients = await countAudience(env, context.workspaceId, audienceRules);
 
   let scheduledAt: string | null = null;
-  let status = 'draft';
+  let status: 'draft' | 'scheduled' = 'draft';
   if (body.scheduledAt) {
     const date = new Date(body.scheduledAt);
     if (Number.isNaN(date.getTime())) throw new HttpError(400, 'Schedule time is invalid.');
@@ -81,9 +105,33 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
     if (attachmentTotal > MAX_FILE_BYTES) throw new HttpError(400, 'Combined attachments exceed the 5 MiB email limit.');
   }
 
+  return {
+    name,
+    subject,
+    preheader,
+    htmlBody,
+    textBody,
+    fromName,
+    fromEmail,
+    replyTo,
+    senderIdentityId: sender.id,
+    segmentId,
+    audienceRules,
+    estimatedRecipients,
+    scheduledAt,
+    status,
+    attachmentIds,
+    trackOpens,
+    trackClicks,
+  };
+}
+
+export async function handleCampaignCreate(request: Request, env: Env, context: AuthContext): Promise<Response> {
+  requireRole(context, ['owner', 'admin', 'editor']);
+  const input = await validateCampaignInput(env, context, await readJson<CampaignInput>(request));
   const id = randomId('cmp_');
   const now = nowIso();
-  const statements: D1PreparedStatement[] = [
+  await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO campaigns (
         id, workspace_id, name, subject, from_name, from_email, reply_to, html_body, text_body, preheader, status, scheduled_at,
@@ -92,36 +140,117 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
     ).bind(
       id,
       context.workspaceId,
-      name,
-      subject,
-      fromName,
-      fromEmail,
-      replyTo,
-      htmlBody,
-      textBody,
-      preheader,
-      status,
-      scheduledAt,
-      sender.id,
-      segmentId,
-      JSON.stringify(audienceRules),
-      trackOpens,
-      trackClicks,
+      input.name,
+      input.subject,
+      input.fromName,
+      input.fromEmail,
+      input.replyTo,
+      input.htmlBody,
+      input.textBody,
+      input.preheader,
+      input.status,
+      input.scheduledAt,
+      input.senderIdentityId,
+      input.segmentId,
+      JSON.stringify(input.audienceRules),
+      input.trackOpens,
+      input.trackClicks,
       now,
       now,
     ),
-    ...attachmentIds.map((fileId) => env.DB.prepare('INSERT INTO campaign_attachments (campaign_id, file_id) VALUES (?, ?)').bind(id, fileId)),
-  ];
-  await env.DB.batch(statements);
+    ...input.attachmentIds.map((fileId) => env.DB.prepare('INSERT INTO campaign_attachments (campaign_id, file_id) VALUES (?, ?)').bind(id, fileId)),
+  ]);
   await audit(env, request, context, 'campaign.create', 'campaign', id, {
-    scheduledAt,
-    senderId: sender.id,
-    segmentId,
-    estimatedRecipients,
-    attachmentCount: attachmentIds.length,
-    attachmentTotal,
+    scheduledAt: input.scheduledAt,
+    senderId: input.senderIdentityId,
+    segmentId: input.segmentId,
+    estimatedRecipients: input.estimatedRecipients,
+    attachmentCount: input.attachmentIds.length,
   });
-  return json({ id, status, estimatedRecipients }, 201);
+  return json({ id, status: input.status, estimatedRecipients: input.estimatedRecipients }, 201);
+}
+
+export async function handleCampaignUpdate(request: Request, env: Env, context: AuthContext, campaignId: string): Promise<Response> {
+  requireRole(context, ['owner', 'admin', 'editor']);
+  const current = await env.DB.prepare('SELECT status FROM campaigns WHERE id = ? AND workspace_id = ?')
+    .bind(campaignId, context.workspaceId)
+    .first<{ status: string }>();
+  if (!current) throw new HttpError(404, 'Campaign not found.');
+  if (!MUTABLE_STATUSES.includes(current.status)) {
+    throw new HttpError(409, 'This campaign is already sending or sent, so it can no longer be edited. Duplicate it instead.');
+  }
+  const input = await validateCampaignInput(env, context, await readJson<CampaignInput>(request));
+  const now = nowIso();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE campaigns SET name = ?, subject = ?, from_name = ?, from_email = ?, reply_to = ?, html_body = ?, text_body = ?,
+        preheader = ?, status = ?, scheduled_at = ?, sender_identity_id = ?, segment_id = ?, audience_filter_json = ?,
+        track_opens = ?, track_clicks = ?, updated_at = ?
+       WHERE id = ? AND workspace_id = ?`,
+    ).bind(
+      input.name,
+      input.subject,
+      input.fromName,
+      input.fromEmail,
+      input.replyTo,
+      input.htmlBody,
+      input.textBody,
+      input.preheader,
+      input.status,
+      input.scheduledAt,
+      input.senderIdentityId,
+      input.segmentId,
+      JSON.stringify(input.audienceRules),
+      input.trackOpens,
+      input.trackClicks,
+      now,
+      campaignId,
+      context.workspaceId,
+    ),
+    env.DB.prepare('DELETE FROM campaign_attachments WHERE campaign_id = ?').bind(campaignId),
+    ...input.attachmentIds.map((fileId) => env.DB.prepare('INSERT INTO campaign_attachments (campaign_id, file_id) VALUES (?, ?)').bind(campaignId, fileId)),
+  ]);
+  await audit(env, request, context, 'campaign.update', 'campaign', campaignId, {
+    scheduledAt: input.scheduledAt,
+    estimatedRecipients: input.estimatedRecipients,
+  });
+  return json({ ok: true, status: input.status, estimatedRecipients: input.estimatedRecipients });
+}
+
+export async function handleCampaignDelete(request: Request, env: Env, context: AuthContext, campaignId: string): Promise<Response> {
+  requireRole(context, ['owner', 'admin']);
+  const current = await env.DB.prepare('SELECT status FROM campaigns WHERE id = ? AND workspace_id = ?')
+    .bind(campaignId, context.workspaceId)
+    .first<{ status: string }>();
+  if (!current) throw new HttpError(404, 'Campaign not found.');
+  // Sent campaigns are retained: deleting one would cascade away its send history,
+  // engagement records and the audit trail behind your reports.
+  if (!MUTABLE_STATUSES.includes(current.status)) {
+    throw new HttpError(409, 'Sent campaigns are kept so your reporting and audit history stay intact.');
+  }
+  await env.DB.prepare('DELETE FROM campaigns WHERE id = ? AND workspace_id = ?').bind(campaignId, context.workspaceId).run();
+  await audit(env, request, context, 'campaign.delete', 'campaign', campaignId, { status: current.status });
+  return json({ ok: true });
+}
+
+export async function handleCampaignCancel(request: Request, env: Env, context: AuthContext, campaignId: string): Promise<Response> {
+  requireRole(context, ['owner', 'admin', 'editor']);
+  const current = await env.DB.prepare('SELECT status FROM campaigns WHERE id = ? AND workspace_id = ?')
+    .bind(campaignId, context.workspaceId)
+    .first<{ status: string }>();
+  if (!current) throw new HttpError(404, 'Campaign not found.');
+  if (current.status !== 'scheduled') {
+    throw new HttpError(409, 'Only a scheduled campaign can be cancelled. Once sending starts, messages are already queued for delivery.');
+  }
+  // Guard against cancelling at the same moment the cron picks it up.
+  const result = await env.DB.prepare(
+    "UPDATE campaigns SET status = 'draft', scheduled_at = NULL, updated_at = ? WHERE id = ? AND workspace_id = ? AND status = 'scheduled'",
+  )
+    .bind(nowIso(), campaignId, context.workspaceId)
+    .run();
+  if ((result.meta.changes ?? 0) !== 1) throw new HttpError(409, 'This campaign already started sending.');
+  await audit(env, request, context, 'campaign.cancel', 'campaign', campaignId);
+  return json({ ok: true, status: 'draft' });
 }
 
 export async function dispatchCampaign(env: Env, campaignId: string, workspaceId: string): Promise<number> {

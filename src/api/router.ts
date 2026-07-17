@@ -12,7 +12,7 @@ import {
   importContacts,
   type ContactInput,
 } from './contacts';
-import { dispatchCampaign, handleCampaignCreate } from './campaigns';
+import { dispatchCampaign, handleCampaignCancel, handleCampaignCreate, handleCampaignDelete, handleCampaignUpdate } from './campaigns';
 import { handleBillingCapture, handleBillingCreate, handleFilesUpload, handleSettingsUpdate } from './resources';
 import { handleSenderCreate, handleSenderDelete, handleSendersList, handleSenderUpdate } from './senders';
 import { countAudience, handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate, resolveAudienceRules, validateAudienceRules } from './audience';
@@ -113,6 +113,11 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     if (!campaign) throw new HttpError(404, 'Campaign not found.');
     return json({ campaign });
   }
+  if (campaignGetMatch && request.method === 'PATCH') return handleCampaignUpdate(request, env, context, decodeURIComponent(campaignGetMatch[1]!));
+  if (campaignGetMatch && request.method === 'DELETE') return handleCampaignDelete(request, env, context, decodeURIComponent(campaignGetMatch[1]!));
+
+  const campaignCancelMatch = path.match(/^\/api\/campaigns\/([^/]+)\/cancel$/);
+  if (campaignCancelMatch && request.method === 'POST') return handleCampaignCancel(request, env, context, decodeURIComponent(campaignCancelMatch[1]!));
 
   const campaignTestMatch = path.match(/^\/api\/campaigns\/([^/]+)\/test$/);
   if (campaignTestMatch && request.method === 'POST') {

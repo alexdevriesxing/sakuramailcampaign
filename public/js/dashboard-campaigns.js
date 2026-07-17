@@ -18,6 +18,15 @@ export async function renderCampaigns() {
   $('#view-root').innerHTML = `<div class="toolbar"><div class="left"><button class="button primary" id="new-campaign-inline">+ New campaign</button></div><div class="right"><span>${formatNumber(data.campaigns.length)} campaigns</span></div></div>${campaignTable(data.campaigns)}`;
   $('#new-campaign-inline')?.addEventListener('click', openCampaignDialog);
   $$('[data-resend]').forEach((button) => button.addEventListener('click', () => openResendDialog(button.dataset.resend)));
+  $$('[data-edit]').forEach((button) => button.addEventListener('click', () => openEditDialog(button.dataset.edit)));
+  $$('[data-cancel]').forEach((button) => button.addEventListener('click', async () => {
+    if (!confirm('Unschedule this campaign and return it to draft? It will not send until you send it again.')) return;
+    try { await api(`/api/campaigns/${button.dataset.cancel}/cancel`, { method: 'POST', body: '{}' }); alertApp('Campaign unscheduled and returned to draft.'); await renderCampaigns(); } catch (error) { alertApp(error.message, 'error'); }
+  }));
+  $$('[data-delete-campaign]').forEach((button) => button.addEventListener('click', async () => {
+    if (!confirm('Delete this campaign permanently? This cannot be undone.')) return;
+    try { await api(`/api/campaigns/${button.dataset.deleteCampaign}`, { method: 'DELETE', body: '{}' }); alertApp('Campaign deleted.'); await renderCampaigns(); } catch (error) { alertApp(error.message, 'error'); }
+  }));
   $$('[data-test]').forEach((button) => button.addEventListener('click', async () => {
     button.disabled = true;
     try { const result = await api(`/api/campaigns/${button.dataset.test}/test`, { method: 'POST', body: '{}' }); alertApp(`Test email sent to ${result.sentTo}.`); } catch (error) { alertApp(error.message, 'error'); } finally { button.disabled = false; }
@@ -160,6 +169,9 @@ export async function openCampaignDialog() {
   }
   const form = $('#campaign-form');
   form.reset();
+  appState.editingCampaignId = null;
+  $('#campaign-dialog-title').textContent = 'Create a mailing';
+  $('#campaign-submit').textContent = 'Save campaign';
   form.elements.senderId.innerHTML = appState.senders.map((sender) => `<option value="${escapeHtml(sender.id)}" ${sender.isDefault ? 'selected' : ''}>${escapeHtml(sender.label)} — ${escapeHtml(sender.email)}</option>`).join('');
   form.elements.segmentId.innerHTML = `<option value="">All active contacts</option>${appState.segments.map((segment) => `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.name)} (${formatNumber(segment.count)})</option>`).join('')}`;
   renderTemplatePicker();
@@ -178,6 +190,46 @@ export async function openCampaignDialog() {
   $('#campaign-dialog').showModal();
 }
 
+/** Copy a stored campaign's content into the builder form. */
+function fillFormFromCampaign(campaign) {
+  const form = $('#campaign-form');
+  form.elements.name.value = campaign.name || '';
+  form.elements.subject.value = campaign.subject || '';
+  form.elements.preheader.value = campaign.preheader || '';
+  form.elements.htmlBody.value = campaign.html_body || '';
+  form.elements.textBody.value = campaign.text_body || '';
+  if (campaign.from_name) form.elements.fromName.value = campaign.from_name;
+  if (campaign.reply_to) form.elements.replyTo.value = campaign.reply_to;
+  if (campaign.sender_identity_id) form.elements.senderId.value = campaign.sender_identity_id;
+  form.elements.trackOpens.checked = Boolean(campaign.track_opens);
+  form.elements.trackClicks.checked = Boolean(campaign.track_clicks);
+}
+
+/** Open the builder to edit an existing draft, scheduled or failed campaign. */
+export async function openEditDialog(campaignId) {
+  await openCampaignDialog();
+  if (!$('#campaign-dialog').open) return;
+  try {
+    const { campaign } = await api(`/api/campaigns/${encodeURIComponent(campaignId)}`);
+    fillFormFromCampaign(campaign);
+    const rules = JSON.parse(campaign.audience_filter_json || '{}');
+    form_setAudience(campaign.segment_id, rules);
+    appState.editingCampaignId = campaignId;
+    $('#campaign-dialog-title').textContent = 'Edit campaign';
+    $('#campaign-submit').textContent = 'Update campaign';
+    await refreshAudienceEstimate();
+  } catch (error) {
+    alertApp(error.message, 'error');
+  }
+}
+
+function form_setAudience(segmentId, rules) {
+  const form = $('#campaign-form');
+  form.elements.segmentId.value = segmentId || '';
+  form.elements.engagementFilter.value = rules.engagementFilter || 'any';
+  form.elements.engagementCampaignId.value = rules.engagementCampaignId || '';
+}
+
 /** Open the builder pre-filled to re-send an earlier campaign to people who did not open it. */
 export async function openResendDialog(campaignId) {
   await openCampaignDialog();
@@ -185,19 +237,9 @@ export async function openResendDialog(campaignId) {
   try {
     const { campaign } = await api(`/api/campaigns/${encodeURIComponent(campaignId)}`);
     const form = $('#campaign-form');
+    fillFormFromCampaign(campaign);
     form.elements.name.value = `${campaign.name} (resend)`;
-    form.elements.subject.value = campaign.subject || '';
-    form.elements.preheader.value = campaign.preheader || '';
-    form.elements.htmlBody.value = campaign.html_body || '';
-    form.elements.textBody.value = campaign.text_body || '';
-    if (campaign.from_name) form.elements.fromName.value = campaign.from_name;
-    if (campaign.reply_to) form.elements.replyTo.value = campaign.reply_to;
-    if (campaign.sender_identity_id) form.elements.senderId.value = campaign.sender_identity_id;
-    form.elements.trackOpens.checked = Boolean(campaign.track_opens);
-    form.elements.trackClicks.checked = Boolean(campaign.track_clicks);
-    form.elements.segmentId.value = '';
-    form.elements.engagementFilter.value = 'not_opened';
-    form.elements.engagementCampaignId.value = campaignId;
+    form_setAudience('', { engagementFilter: 'not_opened', engagementCampaignId: campaignId });
     alertApp('Pre-filled to re-send to people who did not open. Try a fresh subject line before sending.');
     await refreshAudienceEstimate();
   } catch (error) {
@@ -228,10 +270,14 @@ export async function saveCampaign(event) {
     trackOpens: formData.get('trackOpens') === 'on',
     trackClicks: formData.get('trackClicks') === 'on',
   };
+  const editingId = appState.editingCampaignId;
   try {
-    const result = await api('/api/campaigns', { method: 'POST', body: JSON.stringify(body) });
+    const result = editingId
+      ? await api(`/api/campaigns/${encodeURIComponent(editingId)}`, { method: 'PATCH', body: JSON.stringify(body) })
+      : await api('/api/campaigns', { method: 'POST', body: JSON.stringify(body) });
     $('#campaign-dialog').close();
-    alertApp(`Campaign saved for an estimated ${formatNumber(result.estimatedRecipients)} recipients.`);
+    appState.editingCampaignId = null;
+    alertApp(`Campaign ${editingId ? 'updated' : 'saved'} for an estimated ${formatNumber(result.estimatedRecipients)} recipients.`);
     document.dispatchEvent(new CustomEvent('sakura:view', { detail: 'campaigns' }));
   } catch (error) { alertApp(error.message, 'error'); }
 }
