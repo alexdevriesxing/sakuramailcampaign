@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck",
+    "test": "npm run typecheck && vitest run",
+    "test:watch": "vitest",
     "db:migrate:local": "wrangler d1 migrations apply sakura-mail-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply sakura-mail-db --remote"
   },
@@ -16,8 +17,10 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.5",
     "@cloudflare/workers-types": "5.20260716.1",
     "typescript": "5.9.3",
+    "vitest": "^4.1.10",
     "wrangler": "4.111.0"
   }
 }

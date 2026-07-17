@@ -16,5 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+          cache: npm
+      - run: npm ci
+      # Typechecks src + test, then runs the vitest suite against a real D1
+      # (workerd) with the production migrations applied.
       - run: npm test
