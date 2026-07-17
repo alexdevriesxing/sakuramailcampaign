@@ -22,6 +22,10 @@
   "vars": {
     "APP_NAME": "Sakura Mail",
     "APP_URL": "https://mail.sakurasoftwaresolutions.com",
+    // Delivery provider: "cloudflare" (default) or "resend". Switching to resend
+    // needs `wrangler secret put RESEND_API_KEY` and a domain verified in Resend.
+    // No other code changes — see docs/PROVIDER-COMPATIBILITY.md.
+    "EMAIL_PROVIDER": "cloudflare",
     "FROM_EMAIL": "hello@mail.sakurasoftwaresolutions.com",
     "FROM_NAME": "Sakura Mail",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",

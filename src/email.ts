@@ -1,6 +1,7 @@
 import type { CampaignRow, ContactRow, Env, SendJob } from './types';
 import { createTrackingToken, createUnsubscribeToken, decryptEmail, escapeHtml, nowIso, randomId } from './security';
 import { rewriteLinksForTracking, trackingPixel } from './api/tracking';
+import { emailSender } from './email-provider';
 
 /**
  * Classify a delivery error as a permanent bounce or a transient failure worth
@@ -125,7 +126,7 @@ export async function deliverJob(env: Env, job: SendJob): Promise<void> {
   const attachments = await attachmentsForCampaign(env, campaign.id, job.workspaceId);
 
   try {
-    const result = await env.EMAIL.send({
+    const result = await emailSender(env).send({
       to: email,
       from: { email: campaign.from_email, name: campaign.from_name },
       replyTo: campaign.reply_to ?? undefined,
@@ -217,7 +218,7 @@ export async function sendTestEmail(env: Env, campaignId: string, workspaceId: s
     </div>`;
   const html = `${preheaderBlock(personalize(campaign.preheader ?? '', htmlValues))}${personalize(campaign.html_body, htmlValues)}${footer}`;
   const text = `${personalize(campaign.text_body || stripTags(campaign.html_body), mergeValues)}\n\n[Test send]`;
-  await env.EMAIL.send({
+  await emailSender(env).send({
     to: toEmail,
     from: { email: campaign.from_email, name: campaign.from_name },
     replyTo: campaign.reply_to ?? undefined,

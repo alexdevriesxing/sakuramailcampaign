@@ -1,5 +1,6 @@
 import type { AuthContext, Env } from '../types';
 import { audit, createSession } from '../db';
+import { emailSender } from '../email-provider';
 import {
   enforceRateLimit,
   escapeHtml,
@@ -44,7 +45,7 @@ export async function handleAuthStart(request: Request, env: Env): Promise<Respo
     .run();
 
   try {
-    await env.EMAIL.send({
+    await emailSender(env).send({
       to: email,
       from: { email: env.FROM_EMAIL, name: env.FROM_NAME },
       subject: `${code} is your ${env.APP_NAME} sign-in code`,

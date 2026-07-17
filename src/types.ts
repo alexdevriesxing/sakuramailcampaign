@@ -29,6 +29,10 @@ export interface Env {
   FILES: R2Bucket;
   EMAIL_QUEUE: Queue<SendJob>;
   EMAIL: EmailBinding;
+  /** Which delivery provider to use. Defaults to the Cloudflare EMAIL binding. */
+  EMAIL_PROVIDER?: 'cloudflare' | 'resend';
+  /** Required only when EMAIL_PROVIDER is 'resend'. */
+  RESEND_API_KEY?: string;
   ASSETS: Fetcher;
   APP_NAME: string;
   APP_URL: string;
