@@ -5,6 +5,15 @@
   "compatibility_date": "2026-07-15",
   "workers_dev": true,
   "minify": true,
+  // Custom domain. Cloudflare creates the proxied DNS record and certificate on
+  // deploy. An MX record for Email Sending bounces can coexist on the same
+  // hostname, so this does not clash with the sending-domain onboarding.
+  "routes": [
+    {
+      "pattern": "mail.sakurasoftwaresolutions.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
@@ -12,11 +21,12 @@
   },
   "vars": {
     "APP_NAME": "Sakura Mail",
-    "APP_URL": "https://sakura-mail-campaign.alexdevriesxing.workers.dev",
+    "APP_URL": "https://mail.sakurasoftwaresolutions.com",
     "FROM_EMAIL": "hello@mail.sakurasoftwaresolutions.com",
     "FROM_NAME": "Sakura Mail",
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
-    "PAYPAL_MODE": "sandbox",
+    // Live: the configured PayPal app credentials are live-only (sandbox auth fails).
+    "PAYPAL_MODE": "live",
     "PAYPAL_RECEIVER_EMAIL": "alexdevriesxing@gmail.com",
     "ADMIN_EMAILS": "alexdevriesxing@gmail.com",
     "PRICE_PER_1000_USD": "1.00",
