@@ -28,18 +28,25 @@ Apply migrations:
 npm run db:migrate:remote
 ```
 
-## 3. Email Service
+## 3. Email delivery (Resend)
 
-In Cloudflare Dashboard:
+`EMAIL_PROVIDER` is `resend`, because Cloudflare Email Sending documents itself as transactional-only while this product sends marketing campaigns. See [PROVIDER-COMPATIBILITY.md](./PROVIDER-COMPATIBILITY.md).
 
-1. Open Compute → Email Service → Email Sending.
-2. Onboard the production sending domain.
-3. Allow Cloudflare to create the bounce MX, SPF and DKIM records.
-4. Confirm domain status is active.
-5. Ensure the configured sender addresses are permitted.
-6. Request a higher sending limit before onboarding customers.
+1. Create a Resend account and add the sending domain **`mail.sakurasoftwaresolutions.com`**.
+   Use the dedicated subdomain, not the root, so campaign reputation stays separate from critical corporate mail.
+2. Resend shows a set of DNS records — typically an `MX` and SPF `TXT` on a `send` subdomain, plus a DKIM `TXT` at `resend._domainkey`. Add each one in Cloudflare DNS for `sakurasoftwaresolutions.com`.
+   - Records must be **DNS only** (grey cloud), never proxied.
+   - They coexist with the Worker's custom-domain record on the same hostname; `MX`/`TXT` and `A` do not conflict.
+3. Wait for Resend to report the domain **Verified**.
+4. Create an API key (send access) and store it:
+   ```bash
+   npx wrangler secret put RESEND_API_KEY
+   ```
+5. Add a DMARC record (`_dmarc` TXT, start with `v=DMARC1; p=none; rua=...`) once SPF and DKIM pass.
+6. Confirm every sender identity and `FROM_EMAIL` sit on the verified domain — the app enforces this.
+7. Check the Resend sending limits and per-1,000 price for your expected volume before onboarding customers.
 
-Use a dedicated subdomain such as `mail.sakurasoftwaresolutions.com` so marketing reputation is separated from critical corporate mail.
+Verify end to end: request a login code at `/login` (proves delivery works), then use a campaign **Test** send.
 
 ## 4. Turnstile
 

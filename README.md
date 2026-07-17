@@ -28,20 +28,19 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 
 ## Important product decisions
 
-### Cloudflare delivery is technically supported, but marketing use requires confirmation
+### Delivery runs on Resend, not Cloudflare Email Sending
 
-Cloudflare Email Service supports arbitrary outbound recipients on Workers Paid accounts after a sending domain is onboarded. Current published pricing is 3,000 outbound emails included per month and then `$0.35 per 1,000`. Cloudflare also documents a 5 MiB total message limit, up to 50 combined recipients per API submission and account-specific sending quotas.
+`EMAIL_PROVIDER` is set to `resend`. Cloudflare Email Sending is excellent infrastructure, but its FAQ currently states the service is intended for transactional email, with marketing/bulk-sender tooling planned for the future — and this product exists to send opt-in **marketing** campaigns. Rather than build a business on a use case the provider documents as out of scope, delivery runs on a provider whose acceptable-use terms expressly permit compliant marketing email.
 
-However, Cloudflare's current Email Service FAQ states that the service is intended only for transactional email and that marketing/bulk-sender tooling is planned for the future. Do not launch Sakura Mail for promotional campaigns on this provider without written confirmation from Cloudflare that the intended traffic is permitted. Otherwise, keep the Worker/D1/R2/Queue application and replace the final delivery adapter with a provider that expressly permits marketing email.
+Everything else still runs on Cloudflare: Workers, D1, R2, Queues, Cron, Turnstile and asset hosting. Only the final outbound `send()` call changed, and it is isolated in `src/email-provider.ts` — switching back to `cloudflare`, or on to SES/Postmark, is a config change plus one function. See [docs/PROVIDER-COMPATIBILITY.md](docs/PROVIDER-COMPATIBILITY.md).
 
 This app deliberately sends one recipient per queued job. That protects recipient privacy, gives every message its own unsubscribe header and avoids exposing a mailing list through To/CC fields.
 
-Official references:
+Setup requirements:
 
-- https://developers.cloudflare.com/email-service/platform/pricing/
-- https://developers.cloudflare.com/email-service/platform/limits/
-- https://developers.cloudflare.com/email-service/configuration/send-bindings/
-- https://developers.cloudflare.com/email-service/reference/faq/
+- The sending domain must be verified in Resend (SPF/DKIM DNS records).
+- `RESEND_API_KEY` must be stored with `wrangler secret put`.
+- Check Resend's current per-1,000 pricing against the `$1 / 1,000` retail price to confirm the margin still works at your volume.
 
 ### PayPal cannot be securely “wired” using an email address alone
 
