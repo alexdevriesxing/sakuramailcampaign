@@ -37,6 +37,8 @@ Cloudflare provides hosting, Workers, D1, R2, Queues, Turnstile and email delive
 
 ## Retention
 
+Deleting a contact erases that person's record together with their send history and any open/click events, so no personal data about them remains. Their suppression record (an irreversible hash of the address, with the reason) is deliberately retained so an unsubscribed or bounced address can never be silently re-mailed if the same list is imported again. Because engagement events are erased with the contact, historical campaign totals may decrease after a deletion.
+
 Customer content is kept while the account is active or until deleted, subject to backups and legal requirements. Billing records may be retained for tax, fraud and dispute obligations. Suppression records may be retained after other contact data is deleted to prevent accidental re-mailing. Expired login codes and sessions are removed automatically.
 
 ## Rights and choices

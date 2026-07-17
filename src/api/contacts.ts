@@ -243,6 +243,45 @@ export async function importContacts(env: Env, context: AuthContext, contacts: C
   return { created, updated, rejected };
 }
 
+/**
+ * Erase a contact. Suppression records are keyed by email_hash and deliberately
+ * survive deletion, so an unsubscribed or bounced address cannot be silently
+ * re-mailed if the same person is imported again. This matches the privacy policy.
+ */
+export async function handleContactDelete(request: Request, env: Env, context: AuthContext, id: string): Promise<Response> {
+  requireRole(context, ['owner', 'admin', 'editor']);
+  // D1 enforces ON DELETE CASCADE, so meta.changes also counts the contact's
+  // cascaded send/engagement rows and cannot tell us whether a contact matched.
+  // Check existence up front instead.
+  const existing = await env.DB.prepare('SELECT 1 FROM contacts WHERE id = ? AND workspace_id = ?')
+    .bind(id, context.workspaceId)
+    .first();
+  if (!existing) throw new HttpError(404, 'Contact not found.');
+  await env.DB.prepare('DELETE FROM contacts WHERE id = ? AND workspace_id = ?').bind(id, context.workspaceId).run();
+  await audit(env, request, context, 'contact.delete', 'contact', id);
+  return json({ ok: true, deleted: 1 });
+}
+
+export async function handleContactsBulkDelete(request: Request, env: Env, context: AuthContext): Promise<Response> {
+  requireRole(context, ['owner', 'admin', 'editor']);
+  const body = await readJson<{ contactIds?: string[] }>(request);
+  const ids = [...new Set((body.contactIds ?? []).map((value) => String(value).trim()).filter(Boolean))].slice(0, 500);
+  if (!ids.length) throw new HttpError(400, 'Select at least one contact to delete.');
+  const placeholders = ids.map(() => '?').join(',');
+  // Count first for the same cascade reason as above.
+  const matched = await env.DB.prepare(`SELECT COUNT(*) AS count FROM contacts WHERE workspace_id = ? AND id IN (${placeholders})`)
+    .bind(context.workspaceId, ...ids)
+    .first<{ count: number }>();
+  const deleted = matched?.count ?? 0;
+  if (deleted > 0) {
+    await env.DB.prepare(`DELETE FROM contacts WHERE workspace_id = ? AND id IN (${placeholders})`)
+      .bind(context.workspaceId, ...ids)
+      .run();
+  }
+  await audit(env, request, context, 'contact.bulk_delete', undefined, undefined, { requested: ids.length, deleted });
+  return json({ ok: true, deleted });
+}
+
 export async function handleTagsList(env: Env, context: AuthContext): Promise<Response> {
   const rows = await env.DB.prepare(
     `SELECT t.id, t.name, t.slug, t.created_at, COUNT(ct.contact_id) AS contact_count

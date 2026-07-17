@@ -4,6 +4,8 @@ import { checkOrigin, clearSessionCookie, enforceRateLimit, hmacHex, json } from
 import { HttpError, readJson, requireAuth, requireRole, sanitizeFilename } from '../http';
 import { handleAuthStart, handleAuthVerify, handleDashboard, handleMe } from './auth';
 import {
+  handleContactDelete,
+  handleContactsBulkDelete,
   handleContactsList,
   handleContactTagsBulk,
   handleTagCreate,
@@ -61,6 +63,9 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     return json(result);
   }
   if (path === '/api/contacts/tags' && request.method === 'PATCH') return handleContactTagsBulk(request, env, context);
+  if (path === '/api/contacts/delete' && request.method === 'POST') return handleContactsBulkDelete(request, env, context);
+  const contactMatch = path.match(/^\/api\/contacts\/([^/]+)$/);
+  if (contactMatch && request.method === 'DELETE') return handleContactDelete(request, env, context, decodeURIComponent(contactMatch[1]!));
 
   if (path === '/api/tags' && request.method === 'GET') return handleTagsList(env, context);
   if (path === '/api/tags' && request.method === 'POST') return handleTagCreate(request, env, context);
