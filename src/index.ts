@@ -1,6 +1,6 @@
 import type { Env, SendJob } from './types';
 import { authenticate } from './db';
-import { deliverJob, finalizeCampaignIfComplete } from './email';
+import { deliverJob, finalizeCampaignIfComplete, recordDeadLetter } from './email';
 import { handleApi } from './api/router';
 import { handleClickRedirect, handleOpenPixel } from './api/tracking';
 import { dispatchCampaign } from './api/campaigns';
@@ -104,7 +104,26 @@ async function scheduledHandler(_controller: ScheduledController, env: Env, ctx:
   })());
 }
 
+const DEAD_LETTER_QUEUE = 'sakura-mail-dead-letter';
+
+/** Messages that exhausted every retry: record the failure so it is visible instead of silently lost. */
+async function deadLetterHandler(batch: MessageBatch<SendJob>, env: Env): Promise<void> {
+  const campaigns = new Set<string>();
+  for (const message of batch.messages) {
+    campaigns.add(message.body.campaignId);
+    try {
+      await recordDeadLetter(env, message.body);
+      message.ack();
+    } catch (error) {
+      console.error('Dead-letter recording failed', message.body, error);
+      message.retry();
+    }
+  }
+  for (const campaignId of campaigns) await finalizeCampaignIfComplete(env, campaignId);
+}
+
 async function queueHandler(batch: MessageBatch<SendJob>, env: Env): Promise<void> {
+  if (batch.queue === DEAD_LETTER_QUEUE) return deadLetterHandler(batch, env);
   const campaigns = new Set<string>();
   for (const message of batch.messages) {
     campaigns.add(message.body.campaignId);

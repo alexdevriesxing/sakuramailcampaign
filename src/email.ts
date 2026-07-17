@@ -228,6 +228,29 @@ export async function sendTestEmail(env: Env, campaignId: string, workspaceId: s
   });
 }
 
+/**
+ * Record a job that exhausted every retry and landed in the dead-letter queue.
+ * Without this the send_event stays 'queued' forever: the recipient never gets
+ * the message, the credit is already spent, nobody is told, and the campaign can
+ * never finalize because its queued count never reaches zero.
+ */
+export async function recordDeadLetter(env: Env, job: SendJob): Promise<void> {
+  const now = nowIso();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO send_events (id, workspace_id, campaign_id, contact_id, status, error_code, error_message, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'failed', 'DEAD_LETTER', 'Delivery failed after all retries were exhausted', ?, ?)
+       ON CONFLICT(campaign_id, contact_id) DO UPDATE SET status = 'failed', error_code = 'DEAD_LETTER', error_message = excluded.error_message, updated_at = excluded.updated_at`,
+    ).bind(randomId('send_'), job.workspaceId, job.campaignId, job.contactId, now, now),
+    env.DB.prepare(
+      `UPDATE campaigns SET
+        sent_count = (SELECT COUNT(*) FROM send_events WHERE campaign_id = ? AND status = 'accepted'),
+        failed_count = (SELECT COUNT(*) FROM send_events WHERE campaign_id = ? AND status IN ('failed','bounced','complained')),
+        updated_at = ? WHERE id = ?`,
+    ).bind(job.campaignId, job.campaignId, now, job.campaignId),
+  ]);
+}
+
 export async function finalizeCampaignIfComplete(env: Env, campaignId: string): Promise<void> {
   const row = await env.DB.prepare(
     `SELECT c.recipient_count, c.sent_count, c.failed_count,

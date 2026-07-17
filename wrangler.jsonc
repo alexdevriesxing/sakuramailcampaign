@@ -50,6 +50,14 @@
         "max_batch_timeout": 10,
         "max_retries": 5,
         "dead_letter_queue": "sakura-mail-dead-letter"
+      },
+      {
+        // Records permanently failed sends. No dead_letter_queue of its own, so a
+        // failure here cannot loop back into itself.
+        "queue": "sakura-mail-dead-letter",
+        "max_batch_size": 20,
+        "max_batch_timeout": 30,
+        "max_retries": 3
       }
     ]
   },
