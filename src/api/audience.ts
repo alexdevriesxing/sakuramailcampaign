@@ -5,6 +5,8 @@ import { json, nowIso, randomId } from '../security';
 
 export type ContactSortField = 'created_at' | 'first_name' | 'last_name' | 'consent_status';
 export type SortDirection = 'asc' | 'desc';
+/** Re-engagement targeting relative to an earlier campaign. */
+export type EngagementFilter = 'any' | 'opened' | 'not_opened' | 'clicked' | 'not_clicked';
 
 export interface AudienceRules {
   tagIds: string[];
@@ -17,10 +19,13 @@ export interface AudienceRules {
   sortBy: ContactSortField;
   sortDirection: SortDirection;
   maxRecipients: number | null;
+  engagementCampaignId: string | null;
+  engagementFilter: EngagementFilter;
 }
 
 const ALLOWED_CONSENT = new Set(['express', 'implied', 'transactional', 'unknown']);
 const ALLOWED_SORT = new Set<ContactSortField>(['created_at', 'first_name', 'last_name', 'consent_status']);
+const ALLOWED_ENGAGEMENT = new Set<EngagementFilter>(['any', 'opened', 'not_opened', 'clicked', 'not_clicked']);
 
 function stringIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -38,7 +43,13 @@ export function sanitizeAudienceRules(input: unknown): AudienceRules {
   const sortBy = ALLOWED_SORT.has(source.sortBy as ContactSortField) ? (source.sortBy as ContactSortField) : 'created_at';
   const sortDirection: SortDirection = String(source.sortDirection).toLowerCase() === 'asc' ? 'asc' : 'desc';
   const rawLimit = Number(source.maxRecipients);
+  // Engagement targeting needs both a filter and a campaign; otherwise it is inert.
+  const rawFilter = ALLOWED_ENGAGEMENT.has(source.engagementFilter as EngagementFilter) ? (source.engagementFilter as EngagementFilter) : 'any';
+  const rawCampaign = String(source.engagementCampaignId ?? '').trim();
+  const engagementActive = rawFilter !== 'any' && rawCampaign.length > 0;
   return {
+    engagementCampaignId: engagementActive ? rawCampaign : null,
+    engagementFilter: engagementActive ? rawFilter : 'any',
     tagIds: stringIds(source.tagIds),
     tagMode: source.tagMode === 'all' ? 'all' : 'any',
     excludeTagIds: stringIds(source.excludeTagIds),
@@ -53,6 +64,12 @@ export function sanitizeAudienceRules(input: unknown): AudienceRules {
 }
 
 export async function validateAudienceRules(env: Env, workspaceId: string, rules: AudienceRules): Promise<void> {
+  if (rules.engagementCampaignId) {
+    const campaign = await env.DB.prepare('SELECT 1 FROM campaigns WHERE id = ? AND workspace_id = ?')
+      .bind(rules.engagementCampaignId, workspaceId)
+      .first();
+    if (!campaign) throw new HttpError(400, 'The campaign used for re-engagement targeting is unavailable.');
+  }
   const ids = [...new Set([...rules.tagIds, ...rules.excludeTagIds])];
   if (!ids.length) return;
   const placeholders = ids.map(() => '?').join(',');
@@ -60,6 +77,27 @@ export async function validateAudienceRules(env: Env, workspaceId: string, rules
     .bind(workspaceId, ...ids)
     .first<{ count: number }>();
   if ((row?.count ?? 0) !== ids.length) throw new HttpError(400, 'One or more audience tags are unavailable.');
+}
+
+/**
+ * Resolve the effective audience for a campaign: a saved segment defines the base
+ * audience when chosen, and re-engagement targeting from the composer applies on
+ * top of it (e.g. "VIP customers who did not open the launch email").
+ */
+export async function resolveAudienceRules(
+  env: Env,
+  workspaceId: string,
+  segmentId: string | null,
+  rawRules: unknown,
+): Promise<AudienceRules> {
+  const requested = sanitizeAudienceRules(rawRules);
+  if (!segmentId) return requested;
+  const segment = await env.DB.prepare('SELECT rules_json FROM segments WHERE id = ? AND workspace_id = ?')
+    .bind(segmentId, workspaceId)
+    .first<{ rules_json: string }>();
+  if (!segment) throw new HttpError(400, 'The selected segment is unavailable.');
+  const base = sanitizeAudienceRules(JSON.parse(segment.rules_json || '{}'));
+  return { ...base, engagementCampaignId: requested.engagementCampaignId, engagementFilter: requested.engagementFilter };
 }
 
 function audienceWhere(workspaceId: string, rules: AudienceRules): { sql: string; params: unknown[] } {
@@ -105,6 +143,28 @@ function audienceWhere(workspaceId: string, rules: AudienceRules): { sql: string
       WHERE ct.contact_id = c.id AND t.workspace_id = ? AND ct.tag_id IN (${rules.excludeTagIds.map(() => '?').join(',')})
     )`);
     params.push(workspaceId, ...rules.excludeTagIds);
+  }
+
+  if (rules.engagementCampaignId && rules.engagementFilter !== 'any') {
+    const campaignId = rules.engagementCampaignId;
+    // "Did not open/click" only makes sense for people who actually received the
+    // campaign — otherwise it would sweep in everyone who was never sent it.
+    const delivered = "EXISTS (SELECT 1 FROM send_events se WHERE se.campaign_id = ? AND se.contact_id = c.id AND se.status = 'accepted')";
+    const opened = 'EXISTS (SELECT 1 FROM email_opens o WHERE o.campaign_id = ? AND o.contact_id = c.id)';
+    const clicked = 'EXISTS (SELECT 1 FROM email_clicks cl WHERE cl.campaign_id = ? AND cl.contact_id = c.id)';
+    if (rules.engagementFilter === 'opened') {
+      where.push(opened);
+      params.push(campaignId);
+    } else if (rules.engagementFilter === 'clicked') {
+      where.push(clicked);
+      params.push(campaignId);
+    } else if (rules.engagementFilter === 'not_opened') {
+      where.push(`${delivered} AND NOT ${opened}`);
+      params.push(campaignId, campaignId);
+    } else if (rules.engagementFilter === 'not_clicked') {
+      where.push(`${delivered} AND NOT ${clicked}`);
+      params.push(campaignId, campaignId);
+    }
   }
   return { sql: where.join(' AND '), params };
 }

@@ -15,7 +15,7 @@ import {
 import { dispatchCampaign, handleCampaignCreate } from './campaigns';
 import { handleBillingCapture, handleBillingCreate, handleFilesUpload, handleSettingsUpdate } from './resources';
 import { handleSenderCreate, handleSenderDelete, handleSendersList, handleSenderUpdate } from './senders';
-import { handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate } from './audience';
+import { countAudience, handleSegmentCreate, handleSegmentDelete, handleSegmentsList, handleSegmentUpdate, resolveAudienceRules, validateAudienceRules } from './audience';
 import { handleCampaignRecipients, handlePlatformStats, handleWorkspaceReports } from './reports';
 import { handleTemplateCreate, handleTemplateDelete, handleTemplateUpdate, handleTemplatesList } from './templates';
 import { sendTestEmail } from '../email';
@@ -67,6 +67,14 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
   const tagMatch = path.match(/^\/api\/tags\/([^/]+)$/);
   if (tagMatch && request.method === 'DELETE') return handleTagDelete(request, env, context, decodeURIComponent(tagMatch[1]!));
 
+  if (path === '/api/audience/count' && request.method === 'POST') {
+    const body = await readJson<{ segmentId?: string | null; audienceRules?: unknown }>(request);
+    const segmentId = String(body.segmentId ?? '').trim() || null;
+    const rules = await resolveAudienceRules(env, context.workspaceId, segmentId, body.audienceRules);
+    await validateAudienceRules(env, context.workspaceId, rules);
+    return json({ count: await countAudience(env, context.workspaceId, rules) });
+  }
+
   if (path === '/api/segments' && request.method === 'GET') return handleSegmentsList(env, context);
   if (path === '/api/segments' && request.method === 'POST') return handleSegmentCreate(request, env, context);
   const segmentMatch = path.match(/^\/api\/segments\/([^/]+)$/);
@@ -93,6 +101,19 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     return json({ campaigns: campaigns.results });
   }
   if (path === '/api/campaigns' && request.method === 'POST') return handleCampaignCreate(request, env, context);
+  const campaignGetMatch = path.match(/^\/api\/campaigns\/([^/]+)$/);
+  if (campaignGetMatch && request.method === 'GET') {
+    const campaign = await env.DB.prepare(
+      `SELECT id, name, subject, preheader, html_body, text_body, from_name, reply_to, sender_identity_id,
+        segment_id, audience_filter_json, track_opens, track_clicks, status
+       FROM campaigns WHERE id = ? AND workspace_id = ?`,
+    )
+      .bind(decodeURIComponent(campaignGetMatch[1]!), context.workspaceId)
+      .first();
+    if (!campaign) throw new HttpError(404, 'Campaign not found.');
+    return json({ campaign });
+  }
+
   const campaignTestMatch = path.match(/^\/api\/campaigns\/([^/]+)\/test$/);
   if (campaignTestMatch && request.method === 'POST') {
     requireRole(context, ['owner', 'admin', 'editor']);

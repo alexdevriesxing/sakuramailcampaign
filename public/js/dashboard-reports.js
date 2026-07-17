@@ -1,5 +1,6 @@
 import { $, $$, api, escapeHtml, formatDate, formatNumber } from './shared.js';
 import { statusPill } from './dashboard-context.js';
+import { openResendDialog } from './dashboard-campaigns.js';
 
 export const COLORS = {
   accepted: '#2f9e63',
@@ -120,7 +121,7 @@ function campaignPerformance(rows = []) {
       const color = rate == null ? COLORS.muted : rate >= 0.95 ? COLORS.accepted : rate >= 0.8 ? COLORS.amber : COLORS.failed;
       const opens = Number(c.unique_openers) || 0;
       const clicks = Number(c.unique_clickers) || 0;
-      return `<tr><td><b>${escapeHtml(c.name)}</b><br><small>${escapeHtml(c.subject)}</small><br><button class="button text mini" data-recipients="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}">View recipients →</button></td><td>${statusPill(c.status)}</td><td>${formatNumber(c.recipient_count)}</td><td>${formatNumber(delivered)}</td><td>${opens ? formatNumber(opens) : '—'}</td><td>${clicks ? formatNumber(clicks) : '—'}</td><td>${formatNumber(failed)}</td><td><div class="rate-cell"><div class="rate-bar"><span style="width:${pct}%;background:${color}"></span></div>${ratePill(rate)}</div></td></tr>`;
+      return `<tr><td><b>${escapeHtml(c.name)}</b><br><small>${escapeHtml(c.subject)}</small><br><button class="button text mini" data-recipients="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}">View recipients →</button>${c.status === 'sent' ? ` <button class="button text mini" data-resend="${escapeHtml(c.id)}" data-tip="Follow up with everyone who did not open this campaign.">Resend to non-openers →</button>` : ''}</td><td>${statusPill(c.status)}</td><td>${formatNumber(c.recipient_count)}</td><td>${formatNumber(delivered)}</td><td>${opens ? formatNumber(opens) : '—'}</td><td>${clicks ? formatNumber(clicks) : '—'}</td><td>${formatNumber(failed)}</td><td><div class="rate-cell"><div class="rate-bar"><span style="width:${pct}%;background:${color}"></span></div>${ratePill(rate)}</div></td></tr>`;
     })
     .join('')}</tbody></table></div>`;
 }
@@ -193,4 +194,5 @@ export async function renderReports() {
     </div>
     <section class="panel" style="margin-top:18px"><div class="panel-head"><h2>Spend &amp; credits</h2></div><div class="report-billing-grid"><div><span>Total spent</span><strong>$${Number(data.billing.spentUsd).toFixed(2)}</strong></div><div><span>Completed orders</span><strong>${formatNumber(data.billing.orders)}</strong></div><div><span>Credits purchased</span><strong>${formatNumber(data.billing.creditsPurchased)}</strong></div></div></section>`;
   $$('[data-recipients]').forEach((button) => button.addEventListener('click', () => openRecipients(button.dataset.recipients, button.dataset.name)));
+  $$('[data-resend]').forEach((button) => button.addEventListener('click', () => openResendDialog(button.dataset.resend)));
 }

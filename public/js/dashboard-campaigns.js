@@ -17,6 +17,7 @@ export async function renderCampaigns() {
   const data = await api('/api/campaigns');
   $('#view-root').innerHTML = `<div class="toolbar"><div class="left"><button class="button primary" id="new-campaign-inline">+ New campaign</button></div><div class="right"><span>${formatNumber(data.campaigns.length)} campaigns</span></div></div>${campaignTable(data.campaigns)}`;
   $('#new-campaign-inline')?.addEventListener('click', openCampaignDialog);
+  $$('[data-resend]').forEach((button) => button.addEventListener('click', () => openResendDialog(button.dataset.resend)));
   $$('[data-test]').forEach((button) => button.addEventListener('click', async () => {
     button.disabled = true;
     try { const result = await api(`/api/campaigns/${button.dataset.test}/test`, { method: 'POST', body: '{}' }); alertApp(`Test email sent to ${result.sentTo}.`); } catch (error) { alertApp(error.message, 'error'); } finally { button.disabled = false; }
@@ -36,13 +37,50 @@ function syncSenderDefaults() {
   form.elements.replyTo.value = sender.replyTo || '';
 }
 
-function syncAudienceEstimate() {
+const ENGAGEMENT_LABELS = {
+  any: '',
+  opened: 'who opened it',
+  not_opened: 'who did not open it',
+  clicked: 'who clicked a link',
+  not_clicked: 'who did not click a link',
+};
+
+let estimateTimer = null;
+
+function audiencePayload() {
   const form = $('#campaign-form');
-  const segmentId = form.elements.segmentId.value;
-  const segment = appState.segments.find((item) => item.id === segmentId);
-  $('#audience-estimate').textContent = segment
-    ? `${formatNumber(segment.count)} active, unsuppressed contacts currently match “${segment.name}”. The rules are snapshotted when you save.`
-    : 'All active, unsuppressed contacts will be selected when the campaign sends.';
+  return {
+    segmentId: form.elements.segmentId.value || null,
+    audienceRules: {
+      engagementFilter: form.elements.engagementFilter.value,
+      engagementCampaignId: form.elements.engagementCampaignId.value || null,
+    },
+  };
+}
+
+async function refreshAudienceEstimate() {
+  const box = $('#audience-estimate');
+  const form = $('#campaign-form');
+  const filter = form.elements.engagementFilter.value;
+  if (filter !== 'any' && !form.elements.engagementCampaignId.value) {
+    box.textContent = 'Choose which earlier campaign to measure engagement against.';
+    return;
+  }
+  box.textContent = 'Counting your audience…';
+  try {
+    const { count } = await api('/api/audience/count', { method: 'POST', body: JSON.stringify(audiencePayload()) });
+    const segment = appState.segments.find((item) => item.id === form.elements.segmentId.value);
+    const base = segment ? `“${segment.name}”` : 'all active contacts';
+    const engagement = ENGAGEMENT_LABELS[filter];
+    box.textContent = `${formatNumber(count)} recipients — ${base}${engagement ? ` ${engagement}` : ''}. Bounced and unsubscribed contacts are always excluded.`;
+  } catch (error) {
+    box.textContent = error.message;
+  }
+}
+
+function queueAudienceEstimate() {
+  clearTimeout(estimateTimer);
+  estimateTimer = setTimeout(refreshAudienceEstimate, 250);
 }
 
 function renderTemplatePicker() {
@@ -99,12 +137,22 @@ function openPreview() {
   $('#preview-dialog').showModal();
 }
 
+function renderEngagementPicker() {
+  const select = $('#campaign-form').elements.engagementCampaignId;
+  select.innerHTML = `<option value="">Choose a campaign</option>${(appState.sentCampaigns || [])
+    .map((campaign) => `<option value="${escapeHtml(campaign.id)}">${escapeHtml(campaign.name)}</option>`)
+    .join('')}`;
+}
+
 export async function openCampaignDialog() {
-  const [files, senderData, segmentData, templateData] = await Promise.all([api('/api/files'), api('/api/senders'), api('/api/segments'), api('/api/templates')]);
+  const [files, senderData, segmentData, templateData, campaignData] = await Promise.all([
+    api('/api/files'), api('/api/senders'), api('/api/segments'), api('/api/templates'), api('/api/campaigns'),
+  ]);
   appState.files = files.files;
   appState.senders = senderData.senders.filter((sender) => sender.status === 'active');
   appState.segments = segmentData.segments;
   appState.templates = templateData.templates;
+  appState.sentCampaigns = campaignData.campaigns.filter((campaign) => ['sent', 'sending'].includes(campaign.status));
   if (!appState.senders.length) {
     alertApp('Add an active sender identity in Settings before creating a campaign.', 'error');
     document.dispatchEvent(new CustomEvent('sakura:view', { detail: 'settings' }));
@@ -115,16 +163,46 @@ export async function openCampaignDialog() {
   form.elements.senderId.innerHTML = appState.senders.map((sender) => `<option value="${escapeHtml(sender.id)}" ${sender.isDefault ? 'selected' : ''}>${escapeHtml(sender.label)} — ${escapeHtml(sender.email)}</option>`).join('');
   form.elements.segmentId.innerHTML = `<option value="">All active contacts</option>${appState.segments.map((segment) => `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.name)} (${formatNumber(segment.count)})</option>`).join('')}`;
   renderTemplatePicker();
+  renderEngagementPicker();
   syncSenderDefaults();
-  syncAudienceEstimate();
+  queueAudienceEstimate();
   form.elements.senderId.onchange = syncSenderDefaults;
-  form.elements.segmentId.onchange = syncAudienceEstimate;
+  form.elements.segmentId.onchange = queueAudienceEstimate;
+  form.elements.engagementFilter.onchange = queueAudienceEstimate;
+  form.elements.engagementCampaignId.onchange = queueAudienceEstimate;
   $('#template-pick').onchange = applyTemplate;
   $('#save-template').onclick = saveAsTemplate;
   $('#delete-template').onclick = deleteTemplate;
   $('#preview-campaign').onclick = openPreview;
   $('#attachment-picker').innerHTML = files.files.length ? `<b>Attachments:</b>${files.files.map((file) => `<label><input type="checkbox" name="attachmentIds" value="${escapeHtml(file.id)}">${escapeHtml(file.filename)} (${Math.ceil(file.size_bytes / 1024)} KB)</label>`).join('')}` : '<span>No files uploaded yet.</span>';
   $('#campaign-dialog').showModal();
+}
+
+/** Open the builder pre-filled to re-send an earlier campaign to people who did not open it. */
+export async function openResendDialog(campaignId) {
+  await openCampaignDialog();
+  if (!$('#campaign-dialog').open) return;
+  try {
+    const { campaign } = await api(`/api/campaigns/${encodeURIComponent(campaignId)}`);
+    const form = $('#campaign-form');
+    form.elements.name.value = `${campaign.name} (resend)`;
+    form.elements.subject.value = campaign.subject || '';
+    form.elements.preheader.value = campaign.preheader || '';
+    form.elements.htmlBody.value = campaign.html_body || '';
+    form.elements.textBody.value = campaign.text_body || '';
+    if (campaign.from_name) form.elements.fromName.value = campaign.from_name;
+    if (campaign.reply_to) form.elements.replyTo.value = campaign.reply_to;
+    if (campaign.sender_identity_id) form.elements.senderId.value = campaign.sender_identity_id;
+    form.elements.trackOpens.checked = Boolean(campaign.track_opens);
+    form.elements.trackClicks.checked = Boolean(campaign.track_clicks);
+    form.elements.segmentId.value = '';
+    form.elements.engagementFilter.value = 'not_opened';
+    form.elements.engagementCampaignId.value = campaignId;
+    alertApp('Pre-filled to re-send to people who did not open. Try a fresh subject line before sending.');
+    await refreshAudienceEstimate();
+  } catch (error) {
+    alertApp(error.message, 'error');
+  }
 }
 
 export async function saveCampaign(event) {
@@ -138,6 +216,10 @@ export async function saveCampaign(event) {
     fromName: formData.get('fromName'),
     replyTo: formData.get('replyTo'),
     segmentId: formData.get('segmentId') || null,
+    audienceRules: {
+      engagementFilter: formData.get('engagementFilter') || 'any',
+      engagementCampaignId: formData.get('engagementCampaignId') || null,
+    },
     scheduledAt: formData.get('scheduledAt') || null,
     htmlBody: formData.get('htmlBody'),
     textBody: formData.get('textBody'),

@@ -2,7 +2,7 @@ import type { AuthContext, CampaignRow, Env } from '../types';
 import { audit } from '../db';
 import { isValidEmail, json, normalizeEmail, nowIso, randomId } from '../security';
 import { HttpError, MAX_FILE_BYTES, readJson, requireRole, validSenderForEnvironment } from '../http';
-import { countAudience, getEligibleContactIds, sanitizeAudienceRules, validateAudienceRules } from './audience';
+import { countAudience, getEligibleContactIds, resolveAudienceRules, sanitizeAudienceRules, validateAudienceRules } from './audience';
 
 export async function handleCampaignCreate(request: Request, env: Env, context: AuthContext): Promise<Response> {
   requireRole(context, ['owner', 'admin', 'editor']);
@@ -54,14 +54,7 @@ export async function handleCampaignCreate(request: Request, env: Env, context: 
   if (htmlBody.length > 500_000 || textBody.length > 500_000) throw new HttpError(400, 'Message content is too large.');
 
   const segmentId = String(body.segmentId ?? '').trim() || null;
-  let audienceRules = sanitizeAudienceRules(body.audienceRules);
-  if (segmentId) {
-    const segment = await env.DB.prepare('SELECT rules_json FROM segments WHERE id = ? AND workspace_id = ?')
-      .bind(segmentId, context.workspaceId)
-      .first<{ rules_json: string }>();
-    if (!segment) throw new HttpError(400, 'The selected segment is unavailable.');
-    audienceRules = sanitizeAudienceRules(JSON.parse(segment.rules_json || '{}'));
-  }
+  const audienceRules = await resolveAudienceRules(env, context.workspaceId, segmentId, body.audienceRules);
   await validateAudienceRules(env, context.workspaceId, audienceRules);
   const estimatedRecipients = await countAudience(env, context.workspaceId, audienceRules);
 

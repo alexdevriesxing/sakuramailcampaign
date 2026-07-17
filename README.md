@@ -12,6 +12,8 @@ A production-oriented SaaS starter for affordable email campaigns under the Saku
 - HTML and plain-text campaign composer with merge fields, preheader/preview text, reusable saved templates, a device (desktop/mobile) preview, and one-click test sends to your own address.
 - CSV import, manual contact entry, consent records and deduplication.
 - Contact tags, filtering, bulk tag assignment, sorting and reusable audience segments.
+- Re-engagement targeting: build an audience from how people engaged with an earlier campaign (opened / did not open / clicked / did not click), with a one-click "resend to non-openers" that pre-fills a follow-up campaign. "Did not open" only counts recipients the campaign was actually delivered to, and combines with any saved segment.
+- A live server-side audience count in the campaign builder, so you see exactly how many recipients match before you send.
 - Multiple sender identities with per-campaign display-name and reply-to overrides.
 - R2 attachment storage with type and 5 MiB size enforcement.
 - Send-now and scheduled campaigns using Cloudflare Queues and Cron Triggers.
